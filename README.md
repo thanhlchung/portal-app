@@ -8,6 +8,22 @@ The reasoning behind every choice — including what this architecture cannot do
 
 ---
 
+## Live deployment
+
+| | |
+| --- | --- |
+| App (open on a phone) | <https://portal-pwa.onrender.com> |
+| API | <https://portal-api-7i3v.onrender.com/api/health> |
+| Plan | free — API sleeps after 15 min idle (~1 min to wake) |
+| Database | free Render Postgres, **expires 2026-12-18** |
+
+Email sending is not wired, so **sign-in codes appear in the API logs** rather than in an
+inbox. See `docs/ARCHITECTURE.md` §12 for what was verified on this deployment and the four
+things only a live deploy revealed — including why the `/api/*` rewrite destination must be
+copied from the API's real hostname.
+
+---
+
 ## Run it locally
 
 No database to install, no cloud account, no email provider. The API embeds Postgres 18

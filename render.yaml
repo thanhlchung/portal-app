@@ -82,7 +82,12 @@ services:
       # exists, which is why /api/* has to be listed first.
       - type: rewrite
         source: /api/*
-        destination: https://portal-api.onrender.com/api/*
+        # NOTE: this hostname is what Render actually assigned. A service named
+        # `portal-api` becomes `portal-api-<suffix>` when the plain name is
+        # taken, so after any re-create, copy the API's real URL from the
+        # Dashboard into this line. A stale destination here fails as a 502 on
+        # every /api request.
+        destination: https://portal-api-7i3v.onrender.com/api/*
 
       # Client-side routing, and the offline shell for navigations.
       - type: rewrite
@@ -98,6 +103,12 @@ services:
       - path: /assets/*
         name: Cache-Control
         value: public, max-age=31536000, immutable
+      # Without this the CDN serves the manifest as binary/octet-stream and
+      # Chrome refuses to offer installation. Found only by testing the live
+      # site — the file is valid JSON, so nothing local catches it.
+      - path: /manifest.webmanifest
+        name: Content-Type
+        value: application/manifest+json
       - path: /*
         name: X-Content-Type-Options
         value: nosniff

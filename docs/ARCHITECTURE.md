@@ -116,7 +116,7 @@ portal-app/
 
 **The `/api/*` rewrite is the load-bearing detail.** Because the browser only ever talks to its own origin, the session cookie is **first-party**. That removes an entire class of failure: no CORS preflights, no `SameSite=None`, no third-party cookie blocking, no `credentials: 'include'` debugging. The same shape is reproduced in development by Vite's proxy, so local and production behave identically.
 
-> ⚠️ **Verify this on first deploy.** Rewriting to an external URL means Render proxies the request. If methods or bodies do not survive the proxy, fall back to calling the API host directly with `credentials: 'include'`, `SameSite=None; Secure` cookies, and `TRUSTED_ORIGINS` set to the static site's origin — the API is already configured to support that (`cors()` with credentials plus `trustedOrigins`). Confirm with `curl -i -X POST https://<site>/api/auth/email-otp/send-verification-otp`.
+✅ **Confirmed on a live deployment.** `POST /api/auth/email-otp/send-verification-otp` through the static site's origin returned `200 {"success":true}` with the JSON body intact, and the session cookie came back `HttpOnly; Secure; SameSite=Lax` on the *static site's* host — first-party, as designed. Had it failed, the fallback would be calling the API host directly with `credentials: 'include'`, `SameSite=None; Secure` cookies, and `TRUSTED_ORIGINS` set to the static site's origin; the API already supports that (`cors()` with credentials plus `trustedOrigins`).
 
 ---
 
@@ -333,17 +333,60 @@ The other axis — leaving Render — is cheap too. It is a Node process, a Post
 
 ## 12. What is verified, and what is not
 
-Verified on this machine, by execution:
+### Verified on a live Render deployment
 
-- **9/9 integration tests pass** against real Postgres (PGlite) and real Better Auth: unauthenticated reads/writes rejected, wrong code rejected, sign-in returns a session, no account-existence leak, create/list/delete, blank titles rejected, and **cross-user isolation** (another user's note id returns 404 for both PATCH and DELETE).
-- **The full flow over HTTP**, including through the PWA's origin: send code → sign in → `/api/me` → create → list, with the session cookie honoured end to end.
-- **Typecheck clean** across API and client, including the typed RPC client — the client's `$delete` call is checked against the server's route definition.
-- **Production build succeeds**: 97 KB gzipped JS, service worker, manifest and icons all emitted.
-- **Icons render** (inspected).
+Deployed 2026-11-18: static site `portal-pwa.onrender.com`, API
+`portal-api-7i3v.onrender.com`, Postgres `portal-db` (free plan, expires
+**2026-12-18**). Each item below was executed against the real URLs:
 
-Not verified here, and needing a device or a browser:
+- **`/api/*` rewrite proxies correctly** — `POST` with a JSON body through the
+  static site's origin returned `200 {"success":true}`; methods and bodies
+  survive the proxy.
+- **Session cookie is first-party** — set on `portal-pwa.onrender.com` as
+  `__Secure-better-auth.session_token; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000`.
+  No CORS, no `SameSite=None`, no third-party-cookie exposure.
+- **Email-code sign-in works end to end** — code read from the service logs,
+  exchanged for a session, `/api/me` returned the user.
+- **The auth gate holds** — `/api/notes` returns `401` without the cookie.
+- **Data is in Render Postgres, not local** — the note and the session survived
+  a **redeploy**, which wipes Render's ephemeral filesystem. This is the decisive
+  test that `DATABASE_URL` was wired and boot migrations ran (`database schema up
+  to date` in the logs).
+- **Cross-user isolation in production** — a second account saw an empty list,
+  and `PATCH`/`DELETE` against the first user's note id both returned `404`.
+- **Static-site behaviour** — SPA fallback serves the shell for deep paths;
+  `/sw.js` is `no-cache`; `/assets/*` is `immutable`.
+- **9/9 integration tests** still pass locally against real Postgres (PGlite),
+  and typecheck is clean across both packages.
 
-- **Visual rendering and interaction.** No browser exists on this device, so the CSS, safe-area behaviour, and the code-input feel have not been seen. This is the highest-risk gap in the slice.
-- **The Render deployment itself** — in particular the `/api/*` external rewrite (§4).
-- **iOS specifics**: home-screen install, standalone chrome, storage eviction, notification-preview rendering of the email.
-- **Real email delivery** — the Resend path is written but has never sent a message; only the console fallback has run.
+### Four things only a real deploy could reveal
+
+1. **Service hostnames get a suffix.** `portal-api` was taken, so Render
+   assigned `portal-api-7i3v.onrender.com`. A hardcoded rewrite destination —
+   which is exactly what the blueprint had — would have 502'd every API call.
+   The destination must be copied from the API's real URL after creation.
+2. **`envVars` in `POST /v1/services` were silently ignored.** `BETTER_AUTH_SECRET`
+   (`generateValue: true`), `NODE_ENV` and `RUN_MIGRATIONS_ON_BOOT` never landed,
+   so the service booted without a signing key, threw on the first auth request,
+   and died (502). Setting variables per key via
+   `PUT /v1/services/{id}/env-vars/{key}` works. **Always list the env vars back
+   and confirm they exist.**
+3. **Env-var changes do not trigger a deploy.** They need an explicit
+   `POST /v1/services/{id}/deploys`, otherwise the old build keeps running with
+   the old environment.
+4. **The manifest was served as `binary/octet-stream`**, which stops Chrome from
+   offering installation. The body was valid JSON, so nothing local could catch
+   it. Fixed with a `Content-Type: application/manifest+json` header rule; the
+   fix is now in `render.yaml`.
+
+### Still not verified
+
+- **Visual rendering and interaction.** No browser exists on this device, so the
+  CSS, safe-area behaviour and the code-input feel have never been seen. This
+  remains the highest-risk gap.
+- **Cold start under the free plan.** The service is warm now; measuring the
+  documented ~1 minute spin-up requires 15 minutes of idle first.
+- **Real email delivery** — `RESEND_API_KEY` is unset, so `sendOtpEmail()` took
+  the console-fallback branch. The Resend HTTP path has still never sent a message.
+- **iOS specifics**: home-screen install, standalone chrome, storage eviction,
+  and how the code-bearing subject line renders in the Mail app.
