@@ -1,5 +1,7 @@
-import { PGlite } from "@electric-sql/pglite";
-import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
+// PGlite and its Drizzle driver are imported lazily inside the dev branch.
+// A static import would load a WASM Postgres build into production too, where
+// DATABASE_URL always points at a real server — wasted memory on an instance
+// that is killed at 512 MB.
 import { drizzle as drizzleNodePostgres } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "./schema.js";
@@ -58,6 +60,11 @@ export async function getDb(): Promise<Database> {
     close = async () => pool.end();
     return db;
   }
+
+  const [{ PGlite }, { drizzle: drizzlePglite }] = await Promise.all([
+    import("@electric-sql/pglite"),
+    import("drizzle-orm/pglite"),
+  ]);
 
   const dataDir = process.env.PGLITE_DIR ?? ".pglite";
   const client = new PGlite(dataDir);

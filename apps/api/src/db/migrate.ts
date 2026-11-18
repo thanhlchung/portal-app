@@ -10,7 +10,6 @@
  *    first, and concurrent starts are tolerated rather than fatal.
  */
 import { migrate as migrateNodePostgres } from "drizzle-orm/node-postgres/migrator";
-import { migrate as migratePglite } from "drizzle-orm/pglite/migrator";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { closeDb, getDb } from "./index.js";
@@ -22,7 +21,10 @@ export const migrationsFolder = path.join(
 
 export async function runMigrations(): Promise<void> {
   const db = await getDb();
-  const migrate = process.env.DATABASE_URL ? migrateNodePostgres : migratePglite;
+  // Only touch the PGlite migrator when it is actually the driver in use.
+  const migrate = process.env.DATABASE_URL
+    ? migrateNodePostgres
+    : (await import("drizzle-orm/pglite/migrator")).migrate;
   await migrate(db as never, { migrationsFolder });
 }
 
