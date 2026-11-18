@@ -204,6 +204,14 @@ The gap between "a website that works on a phone" and "an app" is mostly a list 
 - **A single real `<input>`, invisibly stretched over six drawn slots.** Six separate inputs would break paste, break iOS one-time-code autofill, and fight the keyboard. `inputMode="numeric"` + `autoComplete="one-time-code"` + `pattern="[0-9]*"` is what makes the right keyboard appear.
 - **The code is in the email subject line**, so it is readable from a notification preview without opening the message — the single biggest lever on completion rate for email-delivered codes.
 - **A 60-second resend countdown** instead of a button that errors against the server's rate limit.
+- **The pending sign-in survives leaving the app.** Requesting a code means going
+  to the mail app, and on a phone that is enough for iOS to discard and relaunch
+  the page. The address and step are persisted (10-minute TTL, matching the code),
+  so returning lands on the code screen rather than a blank email field. An
+  expired code falls back to the email step with the address still filled in.
+- **"Paste code from clipboard"**, because the user has just copied it in Mail.
+  Clipboard reads need permission on iOS, so the control only renders where the
+  API exists, and a refusal falls back to typing.
 - **Auto-submit is idempotent.** A `submitted` ref prevents the double-submit that a re-render or a stray Enter press would otherwise cause.
 - **Errors are sentences, not codes.** "That code didn't work. Check it and try again, or send a new one."
 

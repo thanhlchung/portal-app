@@ -4,18 +4,79 @@ import { authClient, displayNameFromEmail } from "../lib/auth-client";
 
 const RESEND_SECONDS = 60;
 
+/** Matches the server-side OTP expiry in apps/api/src/auth.ts. */
+const CODE_TTL_MS = 10 * 60 * 1000;
+
+const PENDING_KEY = "portal.pendingSignIn";
+
 type Step = "email" | "code";
 
+interface PendingSignIn {
+  email: string;
+  sentAt: number;
+}
+
+/**
+ * A code is requested, then the user leaves for their mail app.
+ *
+ * On a phone that is enough to lose the page entirely: iOS discards and
+ * relaunches home-screen apps under memory pressure, and a browser tab can be
+ * evicted just as easily. Without persisting this, the user returns to a blank
+ * email field holding a code they can no longer enter — which is exactly the
+ * bug this exists to prevent.
+ */
+function readPending(): PendingSignIn | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(PENDING_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PendingSignIn;
+    if (!parsed?.email || typeof parsed.sentAt !== "number") return null;
+    // An expired code is noise: fall back to the email step, keeping the address.
+    return Date.now() - parsed.sentAt < CODE_TTL_MS ? parsed : { ...parsed, sentAt: 0 };
+  } catch {
+    return null;
+  }
+}
+
+function writePending(email: string): number {
+  const sentAt = Date.now();
+  try {
+    window.localStorage.setItem(PENDING_KEY, JSON.stringify({ email, sentAt }));
+  } catch {
+    // Storage can be unavailable or full; the flow still works without it.
+  }
+  return sentAt;
+}
+
+function clearPending(): void {
+  try {
+    window.localStorage.removeItem(PENDING_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+const restored = readPending();
+const restoredIsLive = Boolean(restored && restored.sentAt > 0);
+
 export default function SignInScreen() {
-  const [step, setStep] = useState<Step>("email");
-  const [email, setEmail] = useState("");
+  const [step, setStep] = useState<Step>(restoredIsLive ? "code" : "email");
+  const [email, setEmail] = useState(restored?.email ?? "");
   const [code, setCode] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    restored && restored.sentAt === 0 ? "That code expired — send yourself a new one." : null,
+  );
   const [busy, setBusy] = useState(false);
-  const [resendIn, setResendIn] = useState(0);
+  const [resendIn, setResendIn] = useState(() => {
+    if (!restoredIsLive || !restored) return 0;
+    const elapsed = Math.floor((Date.now() - restored.sentAt) / 1000);
+    return Math.max(0, RESEND_SECONDS - elapsed);
+  });
   const [mailDelivery, setMailDelivery] = useState<"resend" | "console" | null>(null);
 
   const submitted = useRef("");
+  const [canPaste, setCanPaste] = useState(false);
 
   // Ask the deployment whether it can actually send email. Without this the
   // screen says "we sent a code" on a deployment that has no mail provider and
@@ -33,6 +94,13 @@ export default function SignInScreen() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Clipboard reads need a permission prompt on iOS, so only offer the control
+  // where the API exists at all. The user has just copied the code in Mail; this
+  // is the shortest path from "copied" to "signed in".
+  useEffect(() => {
+    setCanPaste(typeof navigator !== "undefined" && Boolean(navigator.clipboard?.readText));
   }, []);
 
   useEffect(() => {
@@ -60,7 +128,8 @@ export default function SignInScreen() {
         return false;
       }
 
-      setResendIn(RESEND_SECONDS);
+      const sentAt = writePending(address);
+      setResendIn(Math.max(0, RESEND_SECONDS - Math.floor((Date.now() - sentAt) / 1000)));
       // The API returns success before the mail provider has answered, so give
       // the background send a moment and then check what actually happened.
       void confirmDelivery();
@@ -140,7 +209,9 @@ export default function SignInScreen() {
         return;
       }
 
-      // Session changed; the root component swaps screens. Nothing to do here.
+      // Session changed; the root component swaps screens. Clear the resume
+      // marker so a later sign-out does not jump back into a stale code step.
+      clearPending();
     },
     [email],
   );
@@ -228,6 +299,31 @@ export default function SignInScreen() {
 
             <CodeInput value={code} onChange={setCode} disabled={busy} autoFocus />
 
+            {canPaste && code.length < 6 ? (
+              <button
+                className="link-button"
+                type="button"
+                disabled={busy}
+                onClick={async () => {
+                  setError(null);
+                  try {
+                    const text = await navigator.clipboard.readText();
+                    const digits = text.replace(/\D/g, "").slice(0, 6);
+                    if (digits.length === 6) {
+                      setCode(digits); // auto-submits via the effect below
+                    } else {
+                      setError("Your clipboard doesn't contain a six-digit code.");
+                    }
+                  } catch {
+                    // Permission denied or no clipboard access: typing still works.
+                    setError("Couldn't read the clipboard — paste it into the code box instead.");
+                  }
+                }}
+              >
+                Paste code from clipboard
+              </button>
+            ) : null}
+
             {error ? <p className="form-error">{error}</p> : null}
             {busy && !error ? <p className="auth-hint">Signing you in…</p> : null}
 
@@ -257,6 +353,7 @@ export default function SignInScreen() {
                   setCode("");
                   setError(null);
                   submitted.current = "";
+                  clearPending();
                 }}
                 disabled={busy}
               >
