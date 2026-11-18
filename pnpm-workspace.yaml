@@ -1,0 +1,18 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# esbuild ships its platform binary via a postinstall step. Without an explicit
+# allow, pnpm skips it and the runtime (tsx, vite) has no binary on aarch64 —
+# and pnpm exits non-zero, which breaks `pnpm -r` commands.
+allowBuilds:
+  esbuild: true
+
+# These were published inside the default release-age window when they were
+# installed. Pinned explicitly so a fresh install resolves the same versions.
+minimumReleaseAgeExclude:
+  - "@tanstack/query-core@5.108.0"
+  - "@tanstack/query-persist-client-core@5.108.0"
+  - "@tanstack/query-sync-storage-persister@5.108.0"
+  - "@tanstack/react-query-persist-client@5.108.0"
+  - "@tanstack/react-query@5.108.0"

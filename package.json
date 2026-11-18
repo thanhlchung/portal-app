@@ -1,0 +1,21 @@
+{
+  "name": "portal-app",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.24.0",
+  "engines": {
+    "node": ">=22 <27"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @portal/api --filter @portal/pwa dev",
+    "dev:api": "pnpm --filter @portal/api dev",
+    "dev:pwa": "pnpm --filter @portal/pwa dev",
+    "db:migrate": "pnpm --filter @portal/api db:migrate",
+    "build": "pnpm --filter @portal/pwa build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm --filter @portal/api test"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
+  }
+}
