@@ -13,8 +13,27 @@ export default function SignInScreen() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [resendIn, setResendIn] = useState(0);
+  const [mailDelivery, setMailDelivery] = useState<"resend" | "console" | null>(null);
 
   const submitted = useRef("");
+
+  // Ask the deployment whether it can actually send email. Without this the
+  // screen says "we sent a code" on a deployment that has no mail provider and
+  // sends nothing, which reads as a broken app rather than a missing setting.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/config")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((config) => {
+        if (!cancelled && config?.mailDelivery) setMailDelivery(config.mailDelivery);
+      })
+      .catch(() => {
+        // Non-fatal: fall back to the neutral wording.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (resendIn <= 0) return;
@@ -145,6 +164,13 @@ export default function SignInScreen() {
               />
             </label>
 
+            {mailDelivery === "console" ? (
+              <p className="field-note">
+                Email delivery is not configured on this deployment. The code will be written to
+                the server log instead of your inbox.
+              </p>
+            ) : null}
+
             {error ? <p className="form-error">{error}</p> : null}
 
             <button className="button button--primary" type="submit" disabled={busy}>
@@ -154,10 +180,21 @@ export default function SignInScreen() {
           </form>
         ) : (
           <div className="auth">
-            <h1 className="auth-title">Check your email</h1>
+            <h1 className="auth-title">
+              {mailDelivery === "console" ? "Code generated" : "Check your email"}
+            </h1>
             <p className="auth-sub">
-              We sent a code to <strong className="auth-email">{email}</strong>. It expires in
-              10 minutes.
+              {mailDelivery === "console" ? (
+                <>
+                  No message was sent to <strong className="auth-email">{email}</strong> — this
+                  deployment has no email provider. The code is in the server log.
+                </>
+              ) : (
+                <>
+                  We sent a code to <strong className="auth-email">{email}</strong>. It expires in
+                  10 minutes.
+                </>
+              )}
             </p>
 
             <CodeInput value={code} onChange={setCode} disabled={busy} autoFocus />

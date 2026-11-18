@@ -2,6 +2,7 @@ import { Hono, type MiddlewareHandler } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { getAuth } from "./auth.js";
+import { mailDeliveryMode } from "./mail.js";
 import { notesRoutes } from "./routes/notes.js";
 import type { AppEnv } from "./types.js";
 
@@ -20,7 +21,11 @@ const allowedOrigins = (
  * unauthenticated: it is behind the same mount by default.
  */
 const requireSession: MiddlewareHandler<AppEnv> = async (c, next) => {
-  if (c.req.path.startsWith("/api/auth") || c.req.path === "/api/health") {
+  if (
+    c.req.path.startsWith("/api/auth") ||
+    c.req.path === "/api/health" ||
+    c.req.path === "/api/config"
+  ) {
     return next();
   }
 
@@ -50,6 +55,10 @@ export const app = new Hono<AppEnv>()
   .use("/api/*", requireSession)
 
   .get("/api/health", (c) => c.json({ ok: true, uptime: Math.round(process.uptime()) }))
+
+  // Deployment capabilities the client must know about to describe itself
+  // honestly. No secrets — just whether email is wired.
+  .get("/api/config", (c) => c.json({ mailDelivery: mailDeliveryMode() }))
 
   // Better Auth owns the whole /api/auth subtree: send-code, sign-in, session,
   // sign-out, all of it.

@@ -34,6 +34,17 @@ export function observeOtpSends(observer: OtpObserver): () => void {
 
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
+/**
+ * Whether real email is configured for this deployment.
+ *
+ * The sign-in flow is identical either way, but the *user-facing* consequence
+ * is not: without credentials nobody receives a code. Exposing this lets the
+ * client say so instead of claiming an email was sent.
+ */
+export function mailDeliveryMode(): "resend" | "console" {
+  return process.env.RESEND_API_KEY && process.env.MAIL_FROM ? "resend" : "console";
+}
+
 export async function sendOtpEmail({ to, code, expiresInMinutes }: OtpEmail): Promise<SendResult> {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.MAIL_FROM;
