@@ -17,10 +17,12 @@ The reasoning behind every choice — including what this architecture cannot do
 | Plan | free — API sleeps after 15 min idle (~1 min to wake) |
 | Database | free Render Postgres, **expires 2026-12-18** |
 
-Email sending is not wired, so **sign-in codes appear in the API logs** rather than in an
-inbox. See `docs/ARCHITECTURE.md` §12 for what was verified on this deployment and the four
-things only a live deploy revealed — including why the `/api/*` rewrite destination must be
-copied from the API's real hostname.
+Sign-in codes are emailed via Resend, from the shared test sender
+`onboarding@resend.dev` — which only delivers to the Resend account owner. For real users,
+verify a domain in Resend and change `MAIL_FROM`. If the credentials are ever absent, the app
+says so plainly and writes codes to the server log instead of pretending to send. See
+`docs/ARCHITECTURE.md` §12 for everything verified on this deployment, including why the
+`/api/*` rewrite destination must be copied from the API's real hostname.
 
 ---
 

@@ -418,12 +418,30 @@ Two lessons worth keeping:
 The service now also sets `NODE_OPTIONS=--max-old-space-size=320`, so V8 collects
 before the container limit kills the process.
 
+### Email delivery, wired and verified
+
+`RESEND_API_KEY` and `MAIL_FROM` are set on the service, and `GET /api/config`
+reports `{"mailDelivery":"resend"}`. A sign-in code was sent in **561 ms** — a
+real HTTPS round trip — with no console fallback, and arrived in the inbox. The
+code is in the **subject line** (`Your sign-in code: 123456`) so it is readable
+from a notification without opening the message.
+
+The client reads that same `/api/config` flag, so a deployment without email
+credentials now says *"the code is in the server log"* instead of falsely
+claiming an email was sent. That defect only surfaced by using the app.
+
+> The key in use is **sending-only** (it cannot list domains) and the sender is
+> Resend's shared test address, which delivers **only to the account owner**.
+> Both are correct for verification and wrong for production.
+
 ### Still not verified
 
 - **Visual rendering and interaction.** No browser exists on this device, so the
   CSS, safe-area behaviour and the code-input feel have never been seen. This
   remains the highest-risk gap.
-- **Real email delivery** — `RESEND_API_KEY` is unset, so `sendOtpEmail()` took
-  the console-fallback branch. The Resend HTTP path has still never sent a message.
+- **Delivery to arbitrary addresses.** Real email is wired and verified (see
+  below), but through Resend's shared test sender `onboarding@resend.dev`, which
+  only delivers to the address that owns the Resend account. Sending to real
+  users requires verifying a domain (SPF/DKIM/DMARC).
 - **iOS specifics**: home-screen install, standalone chrome, storage eviction,
   and how the code-bearing subject line renders in the Mail app.
