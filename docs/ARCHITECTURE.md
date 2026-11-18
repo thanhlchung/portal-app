@@ -356,7 +356,13 @@ Deployed 2026-11-18: static site `portal-pwa.onrender.com`, API
 - **Cross-user isolation in production** — a second account saw an empty list,
   and `PATCH`/`DELETE` against the first user's note id both returned `404`.
 - **Static-site behaviour** — SPA fallback serves the shell for deep paths;
-  `/sw.js` is `no-cache`; `/assets/*` is `immutable`.
+  `/sw.js` is `no-cache`; `/assets/*` is `immutable`; the manifest is served as
+  `application/manifest+json` (it needed a header rule to be installable).
+- **Cold start, measured** — after 17 minutes idle, the first request took
+  **26.5 s** (TCP connect 0.12 s, so the time is the instance waking, not the
+  network). The next requests took 0.26–0.31 s. This is the concrete number
+  behind "move the API to a paid instance": a first-time user signing in would
+  wait half a minute for the screen that mails them a code.
 - **9/9 integration tests** still pass locally against real Postgres (PGlite),
   and typecheck is clean across both packages.
 
@@ -417,8 +423,6 @@ before the container limit kills the process.
 - **Visual rendering and interaction.** No browser exists on this device, so the
   CSS, safe-area behaviour and the code-input feel have never been seen. This
   remains the highest-risk gap.
-- **Cold start under the free plan.** The service is warm now; measuring the
-  documented ~1 minute spin-up requires 15 minutes of idle first.
 - **Real email delivery** — `RESEND_API_KEY` is unset, so `sendOtpEmail()` took
   the console-fallback branch. The Resend HTTP path has still never sent a message.
 - **iOS specifics**: home-screen install, standalone chrome, storage eviction,
