@@ -234,6 +234,42 @@ The gap between "a website that works on a phone" and "an app" is mostly a list 
 
 ---
 
+## 7a. Staying signed in
+
+The user is not asked for a code once a month, or once a week. That is already how
+it behaves — the code is only needed when there is no valid session cookie.
+
+| Mechanism | Value | Effect |
+| --- | --- | --- |
+| Session lifetime | `expiresIn: 30 days` | The cookie is issued with `Max-Age=2592000`. |
+| Rolling refresh | `updateAge: 1 day` | A returning user's expiry moves forward, so an active user never re-authenticates. |
+| Cookie flags | `HttpOnly; Secure; SameSite=Lax` | Not readable by JavaScript, TLS-only, not sent cross-site. |
+| Storage | `navigator.storage.persist()` | Asks the browser not to evict the cached list. Sign-in does not depend on it. |
+
+Verified on the live deployment: a cookie captured at 10:49 still authenticated at
+12:23 with no code in between, and the issued cookie carried `Max-Age=2592000`.
+
+### The iOS nuance that actually matters
+
+WebKit's ITP deletes **script-written** storage after seven *Safari-use days*
+without interaction, and caps client-side cookies (`document.cookie`) at seven
+days. Two consequences for us:
+
+- **The session cookie is safe.** It is set by the server with `HttpOnly`, so it
+  is not script-writable and is not swept by that rule. Sign-in survives.
+- **The cached note list is not.** It lives in `localStorage`, which ITP can clear.
+  The cost is one refetch, not a sign-out — which is exactly why the cache is
+  modelled as a cache and never as the source of truth.
+
+WebKit also counts usage separately for **home-screen web apps**, which run
+outside Safari with their own counter, and states that first-party data in an
+installed web app is not expected to be deleted. So on iOS, *installing* is what
+makes persistence dependable — one more reason the install prompt on the sign-in
+flow is not cosmetic.
+
+References: [ITP 2.3 (script-writable storage, HttpOnly guidance)](https://webkit.org/blog/9521/intelligent-tracking-prevention-2-3/),
+[the seven-day cap](https://openpwa.net/reference/storage/safari-seven-day-cap/).
+
 ## 8. Platform constraints that shaped this design
 
 These are the findings that changed decisions, not decoration. Each one is why some obvious-looking choice above is not the choice made.

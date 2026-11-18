@@ -5,6 +5,20 @@ import App from "./App";
 import { persister, queryClient } from "./lib/query";
 import "./styles.css";
 
+/**
+ * Ask the browser not to evict this origin's storage.
+ *
+ * Sign-in does not depend on this — the session lives in an HttpOnly cookie that
+ * the server sets. What can be evicted is the cached note list (localStorage),
+ * after ~7 days of non-use in Safari (ITP). WebKit's heuristic favours granting
+ * persistence to app-like contexts, so asking is worth one silent call.
+ */
+if (navigator.storage?.persist) {
+  void navigator.storage.persist().catch(() => {
+    // Non-fatal: an evicted cache costs one refetch, not a sign-out.
+  });
+}
+
 // The service worker is what makes this an app rather than a website: instant
 // repeat launches and a usable shell with no network. Registered in production
 // only, because a cached shell during development makes HMR confusing.
