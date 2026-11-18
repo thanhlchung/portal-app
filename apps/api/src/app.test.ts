@@ -25,7 +25,7 @@ const migrationsFolder = path.join(
 
 const { app } = await import("./app.js");
 const { getDb, closeDb } = await import("./db/index.js");
-const { observeOtpSends } = await import("./mail.js");
+const { observeOtpSends, renderOtpHtml } = await import("./mail.js");
 
 /** address -> most recent code, as observed leaving the mail layer */
 const sentCodes = new Map<string, string>();
@@ -193,5 +193,29 @@ describe("notes", () => {
 
     const remove = await request(`/api/notes/${note.id}`, { method: "DELETE", cookie: bob });
     assert.equal(remove.status, 404);
+  });
+});
+
+describe("email template", () => {
+  const html = renderOtpHtml("123456", 10);
+
+  it("keeps the code as one contiguous run", () => {
+    // Gmail's copy-code detection and long-press selection both depend on the
+    // digits being adjacent text, not split across elements.
+    assert.ok(html.includes(">123456<"), "code should appear as a single text node");
+    const split = /1\D{0,20}2\D{0,20}3\D{0,20}4\D{0,20}5\D{0,20}6/;
+    assert.ok(!split.test(html.replace(/>123456</g, "")), "code must not be interleaved");
+  });
+
+  it("ships no script and no remote images", () => {
+    // Email clients strip scripts; an external image would also break the code
+    // for anyone with images blocked, which is most people by default.
+    assert.ok(!/<script/i.test(html));
+    assert.ok(!/<img/i.test(html));
+  });
+
+  it("tells the user the code is copyable and how long it lasts", () => {
+    assert.ok(/press and hold/i.test(html));
+    assert.ok(/expires in 10 minutes/i.test(html));
   });
 });

@@ -41,11 +41,16 @@ function makeAuth(db: Awaited<ReturnType<typeof getDb>>) {
     emailAndPassword: { enabled: false },
 
     session: {
-      // A long-lived session is the whole point of code-based sign-in: the
-      // user should not have to fish for another email every time they open
-      // the app.
-      expiresIn: 60 * 60 * 24 * 30,
-      updateAge: 60 * 60 * 24,
+      // 90 days, refreshed weekly while in use. The whole point of code-based
+      // sign-in is that the user stops fishing for an email: a returning user
+      // should not see this screen at all. Absolute expiry only bites after
+      // three months of total inactivity, or on a device with no cookie.
+      //
+      // Tradeoff accepted deliberately: a stolen session cookie is valid for up
+      // to 90 days. Sign-out revokes it server-side immediately, and the signed
+      // cookie cache means revocation takes effect within ~5 minutes.
+      expiresIn: 60 * 60 * 24 * 90,
+      updateAge: 60 * 60 * 24 * 7,
       // Signed session cookie cache avoids a database round trip on every
       // request — on a cold mobile connection this is very noticeable.
       cookieCache: { enabled: true, maxAge: 5 * 60 },

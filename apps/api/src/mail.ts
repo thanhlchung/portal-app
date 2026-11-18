@@ -120,15 +120,48 @@ export async function sendOtpEmail({ to, code, expiresInMinutes }: OtpEmail): Pr
   return { delivered: "resend" };
 }
 
-function renderOtpHtml(code: string, expiresInMinutes: number): string {
+export function renderOtpHtml(code: string, expiresInMinutes: number): string {
+  // Constraints that shape this markup:
+  // - Email clients strip JavaScript, so a real copy button is impossible.
+  //   The next best thing is a block that is unmistakably a button and easy to
+  //   long-press, with the digits contiguous so Gmail's own "Copy code" chip
+  //   can detect them. Never split the code across elements, and never put it
+  //   in an image — that breaks both detection and copy.
+  // - Inline styles and tables only: no <style> block, no web fonts, no images.
+  // - The code also appears in the subject and the plain-text part, so a user
+  //   who only reads a notification preview never has to open the message.
   return `<!doctype html>
-<html>
+<html lang="en">
   <body style="margin:0;padding:32px 16px;background:#f4f4f5;font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:420px;margin:0 auto;background:#ffffff;border-radius:16px;padding:32px;">
-      <tr><td style="font-size:15px;color:#3f3f46;padding-bottom:8px;">Your sign-in code</td></tr>
-      <tr><td style="font-size:40px;font-weight:700;letter-spacing:10px;color:#18181b;padding:12px 0 20px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">${code}</td></tr>
-      <tr><td style="font-size:14px;color:#71717a;line-height:1.5;">Enter this code in the app. It expires in ${expiresInMinutes} minutes and can only be used once.</td></tr>
-      <tr><td style="font-size:13px;color:#a1a1aa;line-height:1.5;padding-top:24px;border-top:1px solid #e4e4e7;">If you didn't ask to sign in, you can safely ignore this email — nobody can get in without this code.</td></tr>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:440px;margin:0 auto;background:#ffffff;border-radius:20px;padding:32px 28px;">
+      <tr>
+        <td style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#a1a1aa;padding-bottom:18px;">Portal</td>
+      </tr>
+      <tr>
+        <td style="font-size:16px;color:#3f3f46;padding-bottom:18px;">Here is your sign-in code:</td>
+      </tr>
+      <tr>
+        <td align="center" style="padding-bottom:14px;">
+          <!-- The copyable affordance. Big, isolated, high contrast, and the six
+               digits are one contiguous text run. -->
+          <div style="display:inline-block;background:#eef2ff;border:1px solid #c7d2fe;border-radius:16px;padding:20px 30px;">
+            <span style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:40px;font-weight:700;letter-spacing:8px;color:#312e81;line-height:1;">${code}</span>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td align="center" style="font-size:13px;color:#71717a;padding-bottom:26px;">Press and hold the code to copy it</td>
+      </tr>
+      <tr>
+        <td style="font-size:14px;color:#52525b;line-height:1.55;padding-bottom:22px;border-bottom:1px solid #e4e4e7;">
+          Enter it in the app to finish signing in. The code expires in ${expiresInMinutes} minutes and can only be used once.
+        </td>
+      </tr>
+      <tr>
+        <td style="font-size:13px;color:#a1a1aa;line-height:1.55;padding-top:20px;">
+          Didn't try to sign in? You can ignore this email — nobody can get in without this code.
+        </td>
+      </tr>
     </table>
   </body>
 </html>`;

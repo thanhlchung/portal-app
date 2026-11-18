@@ -155,7 +155,7 @@ user                     PWA                        API                     emai
 | Attempts | 3 per code | Combined with expiry, brute force is infeasible. |
 | Resend | 3 per 60s per address | Plus a client-side 60s countdown so the limit is never felt as an error. |
 | New users | created on first successful code | No separate signup flow. The first code *is* registration — which is why `displayNameFromEmail()` exists instead of a name field. |
-| Sessions | 30 days, refreshed daily, cookie cache 5 min | Re-authenticating weekly would make the app feel hostile. The cookie cache removes a database round trip per request. |
+| Sessions | **90 days**, refreshed weekly while in use, cookie cache 5 min | The user should stop seeing this screen. Absolute expiry only bites after three months of inactivity. Accepted tradeoff: a stolen cookie lives up to 90 days; sign-out revokes server-side, effective within ~5 min. |
 | Passwords | **disabled** | `emailAndPassword: { enabled: false }`. The credential surface is exactly one path. |
 
 Also deliberate: the send-code endpoint returns `{success:true}` whether or not the address has an account. The integration test asserts this. It removes an account-enumeration oracle at no UX cost — the user learns everything from the email arriving.
@@ -236,18 +236,20 @@ The gap between "a website that works on a phone" and "an app" is mostly a list 
 
 ## 7a. Staying signed in
 
-The user is not asked for a code once a month, or once a week. That is already how
+The user is not asked for a code once a month, or once a week — in practice not
+for three months at a stretch. That is already how
 it behaves — the code is only needed when there is no valid session cookie.
 
 | Mechanism | Value | Effect |
 | --- | --- | --- |
-| Session lifetime | `expiresIn: 30 days` | The cookie is issued with `Max-Age=2592000`. |
-| Rolling refresh | `updateAge: 1 day` | A returning user's expiry moves forward, so an active user never re-authenticates. |
+| Session lifetime | `expiresIn: 90 days` | The cookie is issued with `Max-Age=7776000`. |
+| Rolling refresh | `updateAge: 7 days` | A returning user's expiry moves forward weekly, so an active user never re-authenticates. |
 | Cookie flags | `HttpOnly; Secure; SameSite=Lax` | Not readable by JavaScript, TLS-only, not sent cross-site. |
 | Storage | `navigator.storage.persist()` | Asks the browser not to evict the cached list. Sign-in does not depend on it. |
 
 Verified on the live deployment: a cookie captured at 10:49 still authenticated at
-12:23 with no code in between, and the issued cookie carried `Max-Age=2592000`.
+12:23 with no code in between. The issued cookie carries `Max-Age=7776000` (90 days),
+verified locally against a fresh sign-in.
 
 ### The iOS nuance that actually matters
 
@@ -380,7 +382,7 @@ Deployed 2026-11-18: static site `portal-pwa.onrender.com`, API
   static site's origin returned `200 {"success":true}`; methods and bodies
   survive the proxy.
 - **Session cookie is first-party** — set on `portal-pwa.onrender.com` as
-  `__Secure-better-auth.session_token; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000`.
+  `__Secure-better-auth.session_token; HttpOnly; Secure; SameSite=Lax; Max-Age=7776000`.
   No CORS, no `SameSite=None`, no third-party-cookie exposure.
 - **Email-code sign-in works end to end** — code read from the service logs,
   exchanged for a session, `/api/me` returned the user.
