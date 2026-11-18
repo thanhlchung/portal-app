@@ -2,7 +2,7 @@ import { Hono, type MiddlewareHandler } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { getAuth } from "./auth.js";
-import { mailDeliveryMode } from "./mail.js";
+import { lastDeliveryOutcome, mailDeliveryMode } from "./mail.js";
 import { notesRoutes } from "./routes/notes.js";
 import type { AppEnv } from "./types.js";
 
@@ -58,7 +58,14 @@ export const app = new Hono<AppEnv>()
 
   // Deployment capabilities the client must know about to describe itself
   // honestly. No secrets — just whether email is wired.
-  .get("/api/config", (c) => c.json({ mailDelivery: mailDeliveryMode() }))
+  .get("/api/config", (c) =>
+    c.json({
+      mailDelivery: mailDeliveryMode(),
+      // Better Auth swallows send failures, so the client reads this to learn
+      // whether the last code actually left the building.
+      lastDelivery: lastDeliveryOutcome(),
+    }),
+  )
 
   // Better Auth owns the whole /api/auth subtree: send-code, sign-in, session,
   // sign-out, all of it.

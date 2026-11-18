@@ -67,8 +67,10 @@ function makeAuth(db: Awaited<ReturnType<typeof getDb>>) {
         // limiter.
         rateLimit: { window: 60, max: 3 },
         async sendVerificationOTP({ email, otp }) {
-          // Awaited rather than fire-and-forget: on Render there is no
-          // waitUntil, and a dropped send looks like a broken sign-in.
+          // Better Auth runs this as a background task and swallows any throw,
+          // so the endpoint still answers {"success":true} when delivery fails.
+          // sendOtpEmail records the outcome, which /api/config exposes so the
+          // client can report a failure instead of silently pretending.
           await sendOtpEmail({
             to: email,
             code: otp,

@@ -45,6 +45,26 @@ export function mailDeliveryMode(): "resend" | "console" {
   return process.env.RESEND_API_KEY && process.env.MAIL_FROM ? "resend" : "console";
 }
 
+/**
+ * Outcome of the most recent send.
+ *
+ * Better Auth executes `sendVerificationOTP` as a background task and swallows
+ * the error, so the HTTP response says `{"success":true}` even when the provider
+ * rejected the message. Recording the outcome lets `/api/config` tell the client
+ * the truth. In-memory by design: this is a single-instance free service, and a
+ * restart simply means "no recent outcome", which the client treats as unknown.
+ */
+export interface DeliveryOutcome {
+  at: string;
+  ok: boolean;
+}
+
+let lastOutcome: DeliveryOutcome | null = null;
+
+export function lastDeliveryOutcome(): DeliveryOutcome | null {
+  return lastOutcome;
+}
+
 export async function sendOtpEmail({ to, code, expiresInMinutes }: OtpEmail): Promise<SendResult> {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.MAIL_FROM;
@@ -64,29 +84,39 @@ export async function sendOtpEmail({ to, code, expiresInMinutes }: OtpEmail): Pr
     return { delivered: "console" };
   }
 
-  const response = await fetch(RESEND_ENDPOINT, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      to: [to],
-      subject: `Your sign-in code: ${code}`,
-      // The subject carries the code so it is visible in a notification
-      // preview without opening the message — the single biggest win for
-      // OTP completion rate on a phone.
-      text: `Your sign-in code is ${code}. It expires in ${expiresInMinutes} minutes.\n\nIf you didn't request it, you can ignore this email.`,
-      html: renderOtpHtml(code, expiresInMinutes),
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(RESEND_ENDPOINT, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        from,
+        to: [to],
+        // The subject carries the code so it is visible in a notification
+        // preview without opening the message — the single biggest win for
+        // OTP completion rate on a phone.
+        subject: `Your sign-in code: ${code}`,
+        text: `Your sign-in code is ${code}. It expires in ${expiresInMinutes} minutes.\n\nIf you didn't request it, you can ignore this email.`,
+        html: renderOtpHtml(code, expiresInMinutes),
+      }),
+    });
+  } catch (error) {
+    lastOutcome = { at: new Date().toISOString(), ok: false };
+    console.error("email send failed (network):", error);
+    throw error;
+  }
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "<no body>");
+    lastOutcome = { at: new Date().toISOString(), ok: false };
+    console.error(`email send failed (${response.status}): ${detail.slice(0, 300)}`);
     throw new Error(`resend ${response.status}: ${detail.slice(0, 500)}`);
   }
 
+  lastOutcome = { at: new Date().toISOString(), ok: true };
   return { delivered: "resend" };
 }
 

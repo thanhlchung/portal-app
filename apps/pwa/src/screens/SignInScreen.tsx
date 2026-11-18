@@ -61,10 +61,39 @@ export default function SignInScreen() {
       }
 
       setResendIn(RESEND_SECONDS);
+      // The API returns success before the mail provider has answered, so give
+      // the background send a moment and then check what actually happened.
+      void confirmDelivery();
       return true;
     },
     [],
   );
+
+  /**
+   * Better Auth sends the code as a background task and reports success even if
+   * the provider rejected it (an address the sending domain may not reach, for
+   * instance). One follow-up read turns that into a visible error.
+   */
+  async function confirmDelivery() {
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    try {
+      const response = await fetch("/api/config");
+      if (!response.ok) return;
+      const config = (await response.json()) as {
+        lastDelivery?: { at: string; ok: boolean } | null;
+      };
+      const outcome = config.lastDelivery;
+      if (!outcome) return;
+      const age = Date.now() - new Date(outcome.at).getTime();
+      if (age < 60_000 && !outcome.ok) {
+        setError(
+          "The server couldn't deliver that code — this deployment's email sender may not reach that address. Try a different address.",
+        );
+      }
+    } catch {
+      // Non-fatal: the resend control is still available.
+    }
+  }
 
   async function onSubmitEmail(event: React.FormEvent) {
     event.preventDefault();
