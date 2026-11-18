@@ -212,6 +212,13 @@ The gap between "a website that works on a phone" and "an app" is mostly a list 
 - **"Paste code from clipboard"**, because the user has just copied it in Mail.
   Clipboard reads need permission on iOS, so the control only renders where the
   API exists, and a refusal falls back to typing.
+- **Stale builds self-heal.** A service worker that caches the shell can serve a
+  *previous* deploy's shell when a reload happens during a moment of no network —
+  returning to a backgrounded tab on a sleeping mobile radio does exactly that.
+  The user then runs old JavaScript and every fix since appears missing. The app
+  compares its own hashed bundle against the server's on launch and on every
+  resume, reloading once (session-guarded) when they differ. Bundle hashes are the
+  build id; no version endpoint is needed.
 - **Auto-submit is idempotent.** A `submitted` ref prevents the double-submit that a re-render or a stray Enter press would otherwise cause.
 - **Errors are sentences, not codes.** "That code didn't work. Check it and try again, or send a new one."
 

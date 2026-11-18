@@ -57,20 +57,22 @@ function clearPending(): void {
   }
 }
 
-const restored = readPending();
-const restoredIsLive = Boolean(restored && restored.sentAt > 0);
-
 export default function SignInScreen() {
-  const [step, setStep] = useState<Step>(restoredIsLive ? "code" : "email");
-  const [email, setEmail] = useState(restored?.email ?? "");
+  // A lazy initialiser, so the record is re-read on every mount rather than
+  // captured once when the module was first imported.
+  const [resumed] = useState(readPending);
+  const resumedIsLive = Boolean(resumed && resumed.sentAt > 0);
+
+  const [step, setStep] = useState<Step>(resumedIsLive ? "code" : "email");
+  const [email, setEmail] = useState(resumed?.email ?? "");
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(
-    restored && restored.sentAt === 0 ? "That code expired — send yourself a new one." : null,
+    resumed && resumed.sentAt === 0 ? "That code expired — send yourself a new one." : null,
   );
   const [busy, setBusy] = useState(false);
   const [resendIn, setResendIn] = useState(() => {
-    if (!restoredIsLive || !restored) return 0;
-    const elapsed = Math.floor((Date.now() - restored.sentAt) / 1000);
+    if (!resumedIsLive || !resumed) return 0;
+    const elapsed = Math.floor((Date.now() - resumed.sentAt) / 1000);
     return Math.max(0, RESEND_SECONDS - elapsed);
   });
   const [mailDelivery, setMailDelivery] = useState<"resend" | "console" | null>(null);

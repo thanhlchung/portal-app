@@ -4,13 +4,19 @@
  * Strategy, and why:
  * - Navigations: network-first, fall back to the cached shell. A deploy is
  *   picked up immediately when online, and the app still opens offline.
+ *
+ *   The fallback is a trap worth naming: returning to a backgrounded tab on a
+ *   sleeping mobile radio can fail the network fetch and serve a shell from a
+ *   *previous* deploy, leaving the user on old JavaScript. The app therefore
+ *   compares its own bundle hash against the server's on every resume and
+ *   reloads once if they differ (src/lib/update.ts).
  * - Hashed build assets (/assets/*): cache-first. They are immutable.
  * - /api/*: never cached here. The app's own query cache owns offline data,
  *   and caching responses here would risk serving one user's data to the next
  *   person to open the app.
  */
 
-const VERSION = "v1";
+const VERSION = "v2";
 const SHELL_CACHE = `portal-shell-${VERSION}`;
 const ASSET_CACHE = `portal-assets-${VERSION}`;
 

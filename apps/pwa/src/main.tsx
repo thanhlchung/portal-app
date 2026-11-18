@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { persister, queryClient } from "./lib/query";
+import { watchForUpdates } from "./lib/update";
 import "./styles.css";
 
 /**
@@ -29,6 +30,8 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
     });
   });
 }
+
+watchForUpdates();
 
 const root = document.getElementById("root");
 if (!root) throw new Error("#root missing");
