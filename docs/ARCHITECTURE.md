@@ -248,6 +248,7 @@ These are the findings that changed decisions, not decoration. Each one is why s
 | **iOS evicts script-writable storage after ~7 days of non-use** unless installed. | The local cache is an accelerator with a `buster` version, never the source of truth. All state lives in Postgres. |
 | **iOS Web Push requires Add to Home Screen (16.4+).** | Push is not a design assumption. Re-engagement has to come from email. |
 | **`one-time-code` autofill is SMS-oriented.** | The email code path must be fast *without* autofill: subject-line code, 10-minute expiry, one-tap paste, auto-submit. |
+| **A free instance is 512 MB, 0.1 CPU, and gets OOM-killed.** | The start command counts against that budget: launching through `pnpm` cost ~160 MB and 3 s of boot. Production runs `node dist/server.js` directly, and the app logs its RSS every 5 minutes so an OOM is diagnosable rather than mysterious. |
 | **Render's default Node is pinned to a moving major.** Unbounded `engines` ranges resolve to `latest`. ([docs](https://render.com/docs/node-version.md)) | `.node-version` pins 24.22.1 and `engines` is bounded `>=22 <27`, so a deploy cannot silently land on a new major. |
 | **Render introduced new compute-plan IDs in Aug 2026** (`0.5c-512mb` replacing `starter`). | `render.yaml` uses the current IDs, with the legacy names noted. |
 
@@ -378,6 +379,38 @@ Deployed 2026-11-18: static site `portal-pwa.onrender.com`, API
    offering installation. The body was valid JSON, so nothing local could catch
    it. Fixed with a `Content-Type: application/manifest+json` header rule; the
    fix is now in `render.yaml`.
+
+### The OOM kill, and what actually caused it
+
+A free instance has **512 MB** and is restarted if it exceeds it. `portal-api` was
+killed this way at **335 MB**. The cause was not the application — it was the
+process wrapper around it, in two layers. Measured on the live service, Render's
+own memory metric:
+
+| Start command | RSS | Note |
+| --- | --- | --- |
+| `pnpm --filter @portal/api start` (→ `tsx`) | **335 MB** | esbuild resident for TypeScript |
+| `pnpm --filter @portal/api start` (→ `node dist`) | **248 MB** | still a `pnpm` parent process |
+| `node apps/api/dist/server.js` | **71–88 MB** | one process, nothing else |
+
+Removing `tsx` helped (−87 MB). Removing the **`pnpm` wrapper** was the bigger
+win (−160 MB): `pnpm run` keeps itself resident as the parent of the app, which
+on a 0.1-CPU/512 MB instance is a quarter of the budget spent on a launcher.
+Locally the same comparison measured 319 MB for the pnpm tree against 193 MB for
+`node` alone, with boot time 8.9 s versus 5.6 s.
+
+Two lessons worth keeping:
+
+- **On small instances, the start command is part of the memory budget.** Prefer
+  invoking the runtime directly (`node dist/server.js`) over a package-manager
+  shim.
+- **Instrument before guessing.** `process.memoryUsage()` disagreed with the
+  container metric (91 MB versus 248 MB), and that gap was the tell: the app was
+  fine and something *around* it was not. A five-minute RSS heartbeat makes that
+  visible; without it, an OOM kill leaves no evidence at all.
+
+The service now also sets `NODE_OPTIONS=--max-old-space-size=320`, so V8 collects
+before the container limit kills the process.
 
 ### Still not verified
 

@@ -27,7 +27,11 @@ services:
     # for compiled output, on a 512 MB instance. It also transpiles slower on a
     # 0.1-CPU instance, which matters for cold starts.
     buildCommand: pnpm install --frozen-lockfile && pnpm --filter @portal/api build
-    startCommand: pnpm --filter @portal/api start
+    # Invoke node directly, not `pnpm start`. The pnpm wrapper stays resident as
+    # a parent process: measured 319 MB for the tree versus 193 MB for node
+    # alone, and 8.9s to boot versus 5.6s. On a 512 MB instance that wrapper is
+    # the difference between comfortable and killed.
+    startCommand: node apps/api/dist/server.js
     # preDeployCommand: pnpm --filter @portal/api db:migrate   # paid plans only
     healthCheckPath: /api/health
     buildFilter:
