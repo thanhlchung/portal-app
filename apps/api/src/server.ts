@@ -19,6 +19,27 @@ const server = serve({ fetch: app.fetch, port, hostname }, (info) => {
   );
 });
 
+/**
+ * Memory heartbeat.
+ *
+ * A free Render instance has 512 MB and is killed if it exceeds it. Without a
+ * periodic sample, an OOM kill leaves no evidence in the logs — you cannot tell
+ * a leak (a line climbing every interval) from a plateau (the same number) from
+ * a one-off spike. Three lines every five minutes is cheap insurance.
+ */
+function logMemory(): void {
+  const { rss, heapUsed, external } = process.memoryUsage();
+  const mb = (bytes: number) => Math.round(bytes / 1_048_576);
+  console.log(
+    `memory rss=${mb(rss)}MB heapUsed=${mb(heapUsed)}MB external=${mb(external)}MB`,
+  );
+}
+
+logMemory();
+// unref so the heartbeat never keeps the process alive.
+setInterval(logMemory, 5 * 60 * 1000).unref();
+
+
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
     server.close(() => process.exit(0));
