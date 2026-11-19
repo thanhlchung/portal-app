@@ -295,9 +295,15 @@ export class AsteroidsGame {
     else if (this.phase === "paused") this.resume();
   }
 
-  setInput(name: ControlName, down: boolean): void {
+  /**
+   * `name` is a string because the shared shell renders controls from a
+   * generic spec; anything this engine does not recognise is ignored rather
+   * than throwing inside a pointer handler.
+   */
+  setInput(name: string, down: boolean): void {
+    if (!(name in this.input)) return;
     if (down) this.audio.unlock();
-    this.input[name] = down;
+    this.input[name as ControlName] = down;
   }
 
   setMuted(muted: boolean): void {

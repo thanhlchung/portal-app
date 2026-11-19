@@ -6,6 +6,7 @@
  * hashed on purpose.
  */
 import assert from "node:assert/strict";
+import { GAME_SLUGS as CLIENT_GAME_SLUGS } from "../../pwa/src/games/slugs";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -24,6 +25,7 @@ const migrationsFolder = path.join(
 );
 
 const { app } = await import("./app.js");
+const { GAME_SLUGS: SERVER_GAME_SLUGS } = await import("./games.js");
 const { getDb, closeDb } = await import("./db/index.js");
 const { observeOtpSends, renderOtpHtml } = await import("./mail.js");
 
@@ -232,6 +234,10 @@ interface BoardBody {
   you: { score: number; level: number; createdAt: string; rank: number } | null;
 }
 
+/**
+ * The legacy `/api/scores` alias, which is what the pre-multi-game client calls.
+ * It must keep returning the default game's board.
+ */
 async function board(cookie: string): Promise<BoardBody> {
   const response = await request("/api/scores", { cookie });
   assert.equal(response.status, 200);
@@ -395,5 +401,159 @@ describe("scores", () => {
     assert.ok(you);
     assert.equal(you.score, 100_022);
     assert.equal(you.rank, 1);
+  });
+});
+
+interface GameBoardBody extends BoardBody {
+  game: string;
+}
+
+async function gameBoard(cookie: string, slug: string): Promise<GameBoardBody> {
+  const response = await request(`/api/games/${slug}/scores`, { cookie });
+  assert.equal(response.status, 200, `expected a board for ${slug}`);
+  return (await response.json()) as GameBoardBody;
+}
+
+/**
+ * The portal grew a second dimension — which game a score belongs to — and the
+ * failure mode is quiet: a score leaking onto another game's board, or a rank
+ * computed across games, would both look plausible on screen.
+ */
+describe("per-game boards", () => {
+  it("scopes scores, and ranks, to one game", async () => {
+    const cookie = await signIn("multi@example.com");
+
+    const asteroidPost = await request("/api/games/asteroids/scores", {
+      method: "POST",
+      body: { score: 700, level: 2 },
+      cookie,
+    });
+    assert.equal(asteroidPost.status, 201);
+    const asteroidEntry = (await asteroidPost.json()) as { score: { id: string }; rank: number };
+
+    const invaderPost = await request("/api/games/space-invaders/scores", {
+      method: "POST",
+      body: { score: 900, level: 3 },
+      cookie,
+    });
+    assert.equal(invaderPost.status, 201);
+    const invaderEntry = (await invaderPost.json()) as {
+      game: string;
+      score: { id: string };
+      rank: number;
+    };
+    assert.equal(invaderEntry.game, "space-invaders");
+    // First ever run of this game: the ranks cannot be shared with Asteroids,
+    // whose board already holds far higher scores from the tests above.
+    assert.equal(invaderEntry.rank, 1);
+
+    const asteroids = await gameBoard(cookie, "asteroids");
+    const invaders = await gameBoard(cookie, "space-invaders");
+
+    assert.equal(asteroids.game, "asteroids");
+    assert.equal(invaders.scores.length, 1);
+    assert.equal(invaders.scores[0]!.id, invaderEntry.score.id);
+    assert.ok(
+      asteroids.scores.every((entry) => entry.id !== invaderEntry.score.id),
+      "a Space Invaders run appeared on the Asteroids board",
+    );
+
+    // "Your best" is per game too.
+    assert.equal(invaders.you?.score, 900);
+    assert.equal(invaders.you?.rank, 1);
+    assert.equal(asteroids.you?.score, 700);
+    assert.ok(asteroids.scores.every((entry) => entry.score > 700), "this user's own run is on the board");
+  });
+
+  it("rejects an unknown game instead of inventing a board", async () => {
+    const cookie = await signIn("unknown-game@example.com");
+
+    const read = await request("/api/games/doom/scores", { cookie });
+    assert.equal(read.status, 404);
+    assert.deepEqual(await read.json(), { error: "unknown_game" });
+
+    const write = await request("/api/games/doom/scores", {
+      method: "POST",
+      body: { score: 10, level: 1 },
+      cookie,
+    });
+    assert.equal(write.status, 404);
+  });
+
+  it("requires a session for the game boards", async () => {
+    assert.equal((await request("/api/games")).status, 401);
+    assert.equal((await request("/api/games/asteroids/scores")).status, 401);
+    assert.equal(
+      (await request("/api/games/asteroids/scores", { method: "POST", body: { score: 1, level: 1 } }))
+        .status,
+      401,
+    );
+  });
+
+  it("keeps the legacy /api/scores alias on the default game", async () => {
+    const cookie = await signIn("alias@example.com");
+    await request("/api/games/asteroids/scores", {
+      method: "POST",
+      body: { score: 333, level: 1 },
+      cookie,
+    });
+
+    const legacy = (await (await request("/api/scores", { cookie })).json()) as GameBoardBody;
+    const perGame = await gameBoard(cookie, "asteroids");
+
+    assert.equal(legacy.game, "asteroids");
+    assert.deepEqual(
+      legacy.scores.map((entry) => entry.id),
+      perGame.scores.map((entry) => entry.id),
+    );
+    assert.deepEqual(legacy.you, perGame.you);
+  });
+
+  it("summarises every game for the hub", async () => {
+    const cookie = await signIn("hub@example.com");
+    await request("/api/games/tetris/scores", {
+      method: "POST",
+      body: { score: 4242, level: 4, playerName: "HUB" },
+      cookie,
+    });
+
+    const response = await request("/api/games", { cookie });
+    assert.equal(response.status, 200);
+    const { games } = (await response.json()) as {
+      games: {
+        slug: string;
+        top: { score: number; playerName: string } | null;
+        you: { score: number; rank: number } | null;
+      }[];
+    };
+
+    assert.deepEqual(
+      games.map((game) => game.slug),
+      [...SERVER_GAME_SLUGS],
+      "the hub must describe every game the server accepts",
+    );
+
+    const tetris = games.find((game) => game.slug === "tetris");
+    assert.equal(tetris?.top?.score, 4242);
+    assert.equal(tetris?.top?.playerName, "HUB");
+    assert.equal(tetris?.you?.score, 4242);
+    assert.equal(tetris?.you?.rank, 1);
+
+    // A game nobody has played still gets a card, with empty slots rather than
+    // being omitted.
+    const connect4 = games.find((game) => game.slug === "connect4");
+    assert.deepEqual(connect4, { slug: "connect4", top: null, you: null });
+  });
+
+  it("accepts a board for every game the client can play", () => {
+    // The client's registry (apps/pwa/src/games/slugs.ts) is imported here on
+    // purpose: adding a game to the app without adding it to the server's
+    // allowlist would ship a 404 board, and this is where that is caught.
+    for (const slug of CLIENT_GAME_SLUGS) {
+      assert.ok(
+        (SERVER_GAME_SLUGS as readonly string[]).includes(slug),
+        `the server has no board for client game "${slug}"`,
+      );
+    }
   });
 });

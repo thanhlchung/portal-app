@@ -122,15 +122,19 @@ export const note = pgTable(
 );
 
 /**
- * One row per finished Asteroids run.
+ * One row per finished run of any game.
  *
  * The score is submitted by the client: the game runs in the browser, so the
  * server cannot recompute it. Values are bounded and validated so garbage
  * cannot be stored, but a determined player can still POST any number they
  * like. That is accepted — this is a leaderboard among people who know each
  * other, not an anti-cheat system. Genuine anti-cheat would require simulating
- * the game server-side, which would defeat the point of a client-side arcade
- * game.
+ * each game server-side, which would defeat the point of a client-side arcade.
+ *
+ * `game` is the slug from the server's allowlist (`src/games.ts`), and it is
+ * part of the *identity* of a score: every read and rank query is scoped by it,
+ * so games never share a board. The default is what backfills rows written
+ * before the portal had more than one game.
  *
  * `playerName` is denormalised on purpose: the leaderboard is visible to every
  * signed-in player, so it must show a chosen nickname and never an email
@@ -140,6 +144,7 @@ export const score = pgTable(
   "score",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    game: text("game").notNull().default("asteroids"),
     userId: text("userId")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -151,10 +156,11 @@ export const score = pgTable(
       .defaultNow(),
   },
   (table) => [
-    // Leaderboard read is ORDER BY score DESC LIMIT n; rank is "how many rows
-    // beat this score". Both are range scans over this index.
-    index("score_ranking_idx").on(table.score),
-    index("score_userId_createdAt_idx").on(table.userId, table.createdAt),
+    // Board read: WHERE game = ? ORDER BY score DESC LIMIT n. Rank:
+    // "how many rows of this game beat this score". Both are range scans.
+    index("score_game_ranking_idx").on(table.game, table.score),
+    // "Your best in this game": WHERE game = ? AND userId = ? ORDER BY score DESC.
+    index("score_game_user_idx").on(table.game, table.userId, table.score),
   ],
 );
 

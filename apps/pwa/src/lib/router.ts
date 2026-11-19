@@ -57,6 +57,31 @@ export function usePath(): string {
   return useSyncExternalStore(subscribe, currentPath, () => "/");
 }
 
+/**
+ * Match a `:param` pattern against a path, returning the params or null.
+ *
+ * Deliberately tiny: no optional segments, no wildcards, no nesting. The portal
+ * has four routes and the only dynamic one is a game slug, so this is the
+ * entire feature set needed — and it is testable without a DOM.
+ */
+export function matchPath(pattern: string, path: string): Record<string, string> | null {
+  const wanted = pattern.split("/").filter(Boolean);
+  const actual = path.split("/").filter(Boolean);
+  if (wanted.length !== actual.length) return null;
+
+  const params: Record<string, string> = {};
+  for (let index = 0; index < wanted.length; index += 1) {
+    const segment = wanted[index]!;
+    const value = actual[index]!;
+    if (segment.startsWith(":")) {
+      params[segment.slice(1)] = decodeURIComponent(value);
+      continue;
+    }
+    if (segment !== value) return null;
+  }
+  return params;
+}
+
 /** Navigate without losing middle-click / ctrl-click semantics. */
 export function linkProps(to: string) {
   return {

@@ -1,31 +1,23 @@
 import type { LeaderboardEntry, YourBest } from "@portal/api";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
+import type { GameMeta } from "../games/registry";
+import { formatDay, formatScore } from "../games/shared/format";
 import { api, ApiError, isOfflineError, unwrap } from "../lib/api";
 import { authClient } from "../lib/auth-client";
-import { linkProps, navigate } from "../lib/router";
+import { linkProps } from "../lib/router";
 
 interface BoardPayload {
   scores: LeaderboardEntry[];
   you: YourBest | null;
 }
 
-function formatScore(value: number): string {
-  return String(Math.max(0, Math.floor(value))).padStart(4, "0");
-}
-
-/** "12 Mar" — the year is noise on a board that only holds recent runs. */
-function formatDay(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(date);
-}
-
-export default function ScoresScreen() {
+export default function GameScoresScreen({ game }: { game: GameMeta }) {
   const queryClient = useQueryClient();
   const boardQuery = useQuery({
-    queryKey: ["scores"],
-    queryFn: async () => unwrap<BoardPayload>(await api.scores.$get()),
+    queryKey: ["scores", game.slug],
+    queryFn: async () =>
+      unwrap<BoardPayload>(await api.games[":slug"].scores.$get({ param: { slug: game.slug } })),
   });
 
   // A 401 here means the session is gone, not that the board is broken.
@@ -47,6 +39,9 @@ export default function ScoresScreen() {
           <span className="brand-name">Portal</span>
         </a>
         <div className="header-actions">
+          <a className="link-button link-button--muted" {...linkProps("/play")}>
+            Games
+          </a>
           <button
             className="link-button link-button--muted"
             type="button"
@@ -55,7 +50,10 @@ export default function ScoresScreen() {
           >
             {boardQuery.isFetching ? "Refreshing…" : "Refresh"}
           </button>
-          <a className="button button--compact button--primary" {...linkProps("/play")}>
+          <a
+            className="button button--compact button--primary"
+            {...linkProps(`/play/${game.slug}`)}
+          >
             Play
           </a>
         </div>
@@ -64,7 +62,7 @@ export default function ScoresScreen() {
       <main className="screen">
         <div className="screen-head">
           <h1 className="screen-title">High scores</h1>
-          <span className="screen-meta">Asteroids</span>
+          <span className="screen-meta">{game.title}</span>
         </div>
 
         {boardQuery.isPending ? (
@@ -118,7 +116,8 @@ export default function ScoresScreen() {
                 <div className="best-main">
                   <p className="best-label">No run recorded yet</p>
                   <p className="empty-sub">
-                    Play a round and save the score to take your place on the board.
+                    Play a round of {game.title} and save the score to take your place on the
+                    board.
                   </p>
                 </div>
               </section>
@@ -128,13 +127,12 @@ export default function ScoresScreen() {
               <div className="empty">
                 <p className="empty-title">The board is empty</p>
                 <p className="empty-sub">Be the first name on it.</p>
-                <button
+                <a
                   className="button button--compact button--primary"
-                  type="button"
-                  onClick={() => navigate("/play")}
+                  {...linkProps(`/play/${game.slug}`)}
                 >
                   Play now
-                </button>
+                </a>
               </div>
             ) : (
               <ol className="score-list">

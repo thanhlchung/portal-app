@@ -23,7 +23,7 @@
   ],
   "shortcuts": [
     { "name": "New note", "url": "/?new=1", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
-    { "name": "Play Asteroids", "url": "/play", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
-    { "name": "High scores", "url": "/scores", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+    { "name": "Games", "url": "/play", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Play Asteroids", "url": "/play/asteroids", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
   ]
 }

@@ -9,23 +9,17 @@
  */
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
+import { fakeCanvas, listenerCount, resetHarness, step } from "../shared/testHarness";
 import { AsteroidsGame } from "./engine";
 import type { GameEvents } from "./types";
 
 /* ---------------------------------------------------------------- harness */
 
-interface FakeTimer {
-  id: number;
-  at: number;
-  fn: () => void;
-}
-
-let now = 0;
-let frameCallback: ((time: number) => void) | null = null;
-let timers: FakeTimer[] = [];
-let nextTimerId = 1;
-
-/** The engine's own types are private by design; tests read them deliberately. */
+/**
+ * The engine's own types are private by design; tests read them deliberately.
+ * The stub canvas and virtual clock come from `shared/testHarness`, which every
+ * game's tests share.
+ */
 interface Internals {
   phase: string;
   level: number;
@@ -55,111 +49,6 @@ function internalsOf(game: AsteroidsGame): Internals {
   return game as unknown as Internals;
 }
 
-/** Every 2d method is a no-op; every property is settable. */
-function fakeContext(): CanvasRenderingContext2D {
-  const store: Record<string, unknown> = {};
-  return new Proxy(store, {
-    get(target, property) {
-      if (property in target) return target[property as string];
-      return () => undefined;
-    },
-    set(target, property, value) {
-      target[property as string] = value;
-      return true;
-    },
-  }) as unknown as CanvasRenderingContext2D;
-}
-
-function fakeCanvas(width = 390, height = 844): HTMLCanvasElement {
-  const context = fakeContext();
-  return {
-    width: 0,
-    height: 0,
-    getContext: () => context,
-    getBoundingClientRect: () => ({
-      width,
-      height,
-      left: 0,
-      top: 0,
-      right: width,
-      bottom: height,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    }),
-  } as unknown as HTMLCanvasElement;
-}
-
-const listeners = new Map<string, Set<() => void>>();
-
-function addListener(type: string, handler: () => void): void {
-  if (!listeners.has(type)) listeners.set(type, new Set());
-  listeners.get(type)?.add(handler);
-}
-
-function removeListener(type: string, handler: () => void): void {
-  listeners.get(type)?.delete(handler);
-}
-
-function installStubs(): void {
-  const fakeWindow = {
-    devicePixelRatio: 2,
-    addEventListener: addListener,
-    removeEventListener: removeListener,
-    // Audio is exercised through the real class in a browser only; leaving the
-    // constructor absent is exactly the "no Web Audio" path.
-    AudioContext: undefined,
-    matchMedia: () => ({ matches: false }),
-    setTimeout: (fn: () => void, ms: number) => {
-      const id = nextTimerId;
-      nextTimerId += 1;
-      timers.push({ id, at: now + ms, fn });
-      return id;
-    },
-    clearTimeout: (id: number) => {
-      timers = timers.filter((timer) => timer.id !== id);
-    },
-    setInterval: () => 0,
-    clearInterval: () => undefined,
-  };
-
-  const fakeDocument = {
-    visibilityState: "visible",
-    addEventListener: addListener,
-    removeEventListener: removeListener,
-  };
-
-  const globals = globalThis as unknown as Record<string, unknown>;
-  globals.window = fakeWindow;
-  globals.document = fakeDocument;
-  globals.requestAnimationFrame = (callback: (time: number) => void) => {
-    frameCallback = callback;
-    return 1;
-  };
-  globals.cancelAnimationFrame = () => {
-    frameCallback = null;
-  };
-  globals.ResizeObserver = class {
-    observe(): void {}
-    disconnect(): void {}
-  };
-}
-
-/** Advance the virtual clock, fire due timers, then run one animation frame. */
-function step(frames = 1, ms = 16): void {
-  for (let i = 0; i < frames; i += 1) {
-    now += ms;
-    const due = timers.filter((timer) => timer.at <= now);
-    timers = timers.filter((timer) => timer.at > now);
-    for (const timer of due) timer.fn();
-
-    if (!frameCallback) throw new Error("no frame was scheduled");
-    const callback = frameCallback;
-    frameCallback = null;
-    callback(now);
-  }
-}
-
 function makeGame(events: GameEvents = {}): AsteroidsGame {
   return new AsteroidsGame(fakeCanvas(), events);
 }
@@ -167,12 +56,7 @@ function makeGame(events: GameEvents = {}): AsteroidsGame {
 let game: AsteroidsGame;
 
 beforeEach(() => {
-  now = 0;
-  frameCallback = null;
-  timers = [];
-  nextTimerId = 1;
-  listeners.clear();
-  installStubs();
+  resetHarness();
   game = makeGame();
 });
 
@@ -402,9 +286,9 @@ describe("asteroids engine", () => {
   });
 
   it("stops listening to the window once destroyed", () => {
-    const keydownBefore = listeners.get("keydown")?.size ?? 0;
+    const keydownBefore = listenerCount("keydown");
     assert.ok(keydownBefore > 0);
     game.destroy();
-    assert.equal(listeners.get("keydown")?.size ?? 0, keydownBefore - 1);
+    assert.equal(listenerCount("keydown"), keydownBefore - 1);
   });
 });

@@ -353,6 +353,8 @@ body {
   /* 17px on the primary action: iOS native button metrics. */
   font-size: 17px;
   font-weight: 600;
+  /* .button is used on <a> as well as <button> (client-side links). */
+  text-decoration: none;
   cursor: pointer;
   transition: transform 0.12s var(--ease), background 0.15s var(--ease), opacity 0.15s var(--ease);
 }
@@ -698,6 +700,15 @@ body {
 }
 
 /* ---------- HUD ---------- */
+
+/* The same HUD, but laid out inside a panel rather than pinned to the top bar. */
+.play-hud--static {
+  position: static;
+  transform: none;
+  margin: 0 auto 16px;
+  justify-content: center;
+  text-shadow: none;
+}
 
 .play-hud {
   position: absolute;
@@ -1255,6 +1266,106 @@ body {
   .score-points {
     font-size: 15px;
   }
+}
+
+/* ---------- games hub ---------- */
+
+.game-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.game-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
+  animation: rise 0.18s var(--ease);
+}
+
+.game-card-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.game-card-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.game-card-blurb {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.game-card-controls {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-subtle);
+}
+
+.game-card-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin: 0;
+}
+
+.game-card-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.game-card-stats dt {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+.game-card-stats dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.game-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.game-card-actions .button {
+  width: 100%;
+}
+
+/* The lazy game chunk is loading; the launch area is already dark. */
+.play-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #d6f5e3;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  opacity: 0.75;
 }
 
 /* ---------- accessibility ---------- */

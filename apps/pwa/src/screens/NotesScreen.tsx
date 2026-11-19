@@ -139,10 +139,7 @@ export default function NotesScreen({
         </div>
         <nav className="header-actions" aria-label="Sections">
           <a className="link-button link-button--muted" {...linkProps("/play")}>
-            Play
-          </a>
-          <a className="link-button link-button--muted" {...linkProps("/scores")}>
-            Scores
+            Games
           </a>
           <button
             className="link-button link-button--muted"

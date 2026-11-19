@@ -179,7 +179,7 @@ session       (id, token UNIQUE, userId→user, expiresAt, …)  -- Better Auth
 account       (id, providerId, accountId, userId→user, …)    -- Better Auth
 verification  (id, identifier, value, expiresAt, …)          -- the OTPs
 note          (id uuid, userId→user, title, body, createdAt, updatedAt)
-score         (id uuid, userId→user, playerName, score, level, createdAt)
+score         (id uuid, game, userId→user, playerName, score, level, createdAt)
 ```
 
 **Own the user table.** Using Better Auth's Drizzle adapter means the auth tables live in *this* database, next to application data, joined by real foreign keys. There is no vendor API between the app and who its users are; leaving a managed provider later would be a migration, not an archaeology project.
@@ -190,9 +190,11 @@ score         (id uuid, userId→user, playerName, score, level, createdAt)
 
 **Deletes cascade.** Removing a user removes their sessions, notes and scores — `onDelete: "cascade"` in the schema, so an account deletion is one statement rather than a cleanup job.
 
+**A score belongs to exactly one game.** `score.game` holds the slug, and every read and rank query is scoped by it, so boards never mix. Two composite indexes carry that: `(game, score)` for "top n of this game" and the "how many runs beat this one" rank scan, `(game, userId, score)` for "this player's best in this game". The column defaults to `asteroids`, which is what backfills rows written before the portal had more than one game — the first migration after that change rewrites nothing, it just stops future rows from being ambiguous. Slugs are validated against a server-side allowlist (`apps/api/src/games.ts`), so an unknown game is a 404 rather than a silently created empty board, and that list may legitimately run ahead of the client: porting a game then needs no API change. The client's own slug list lives in a dependency-free module (`apps/pwa/src/games/slugs.ts`) precisely so the API test suite can import it and assert every playable game has a board.
+
 **A leaderboard score is client-reported, and the schema says so.** The Asteroids game runs in the browser, so the server cannot recompute a run: `POST /api/scores` validates bounds (score ≤ 1 000 000, level ≤ 100, a 24-character nickname) and nothing more. The row carries a denormalised `playerName` rather than joining to `user`, because the board is visible to every signed-in player and must never show an email address, and because a rename must not rewrite past results. Ties break on `createdAt`, so an equal score never demotes the earlier run — that rule is what makes `rank` (1 + the number of better runs) stable and repeatable. A cheat-proof board would require server-side simulation, which would defeat the point of a client-side arcade game; this is a leaderboard among people who know each other, not an anti-cheat system.
 
-**What the client caches, and what it does not.** TanStack Query persists the notes list to `localStorage` for offline reads. It is a cache with a `buster` version, never the source of truth — which matters because iOS may evict it (§8).
+**What the client caches, and what it does not.** TanStack Query persists the notes list to `localStorage` for offline reads. Score queries are keyed by slug (`["scores", slug]`), so switching games can never show one game's best run for a frame. It is a cache with a `buster` version, never the source of truth — which matters because iOS may evict it (§8).
 
 ---
 

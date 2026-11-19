@@ -1,18 +1,26 @@
+import { Suspense } from "react";
+import { DEFAULT_GAME, findGame, type GameMeta } from "./games/registry";
 import { authClient } from "./lib/auth-client";
-import { usePath } from "./lib/router";
+import { matchPath, usePath } from "./lib/router";
+import GameScoresScreen from "./screens/GameScoresScreen";
+import GamesLauncher, { RedirectTo } from "./screens/GamesLauncher";
 import NotesScreen from "./screens/NotesScreen";
-import PlayScreen from "./screens/PlayScreen";
-import ScoresScreen from "./screens/ScoresScreen";
+import NotFoundScreen from "./screens/NotFoundScreen";
 import SignInScreen from "./screens/SignInScreen";
 
 /**
- * Three screens, selected by the path. Every one of them except sign-in needs a
- * session, so the gate lives here rather than in each screen — a new route
- * cannot accidentally ship unauthenticated, matching how the API's own
- * middleware works.
+ * Route table. Every screen except sign-in needs a session, so the gate lives
+ * here rather than in each screen — a new route cannot accidentally ship
+ * unauthenticated, matching how the API's own middleware works.
  *
- * Unknown paths fall back to notes rather than 404ing: a stale bookmark or a
- * link from an older build should land somewhere useful.
+ *   /                       notes
+ *   /play                   games hub
+ *   /play/<slug>            that game
+ *   /play/<slug>/scores     that game's board
+ *   /scores                 legacy → default game's board
+ *
+ * Unknown *games* are reported as such; unknown other paths fall back to notes,
+ * so an old bookmark or a stale link still lands somewhere useful.
  */
 export default function App() {
   const { data: session, isPending } = authClient.useSession();
@@ -37,10 +45,43 @@ export default function App() {
 
   if (!session) return <SignInScreen />;
 
-  if (path === "/play") return <PlayScreen user={session.user} />;
-  if (path === "/scores") return <ScoresScreen />;
+  // Checked before /play/:slug: both match `/play/x/scores`, but only this one
+  // is the correct reading of it.
+  const boardMatch = matchPath("/play/:slug/scores", path);
+  if (boardMatch?.slug) {
+    const game = findGame(boardMatch.slug);
+    return game ? <GameScoresScreen game={game} /> : <NotFoundScreen slug={boardMatch.slug} />;
+  }
+
+  const playMatch = matchPath("/play/:slug", path);
+  if (playMatch?.slug) {
+    const game = findGame(playMatch.slug);
+    if (!game) return <NotFoundScreen slug={playMatch.slug} />;
+    return <GameRoute game={game} user={session.user} />;
+  }
+
+  if (path === "/play") return <GamesLauncher />;
+  if (path === "/scores") return <RedirectTo to={`/play/${DEFAULT_GAME}/scores`} />;
 
   return <NotesScreen user={session.user} />;
+}
+
+/** Each game is a lazy chunk; keep the wait dark rather than showing a form. */
+function GameRoute({ game, user }: { game: GameMeta; user: { id: string; email: string; name: string } }) {
+  const Game = game.Component;
+  return (
+    <Suspense
+      fallback={
+        <div className="play">
+          <div className="play-loading" role="status">
+            Loading {game.title}…
+          </div>
+        </div>
+      }
+    >
+      <Game user={user} game={game} />
+    </Suspense>
+  );
 }
 
 function Header() {

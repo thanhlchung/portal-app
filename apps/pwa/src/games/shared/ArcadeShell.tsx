@@ -1,19 +1,27 @@
 import type { LeaderboardEntry } from "@portal/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AsteroidsGame } from "../game/engine";
-import type { ControlName, GamePhase, GameResult, HudState } from "../game/types";
-import { api, ApiError, unwrap } from "../lib/api";
-import { authClient } from "../lib/auth-client";
-import { linkProps } from "../lib/router";
+import { api, ApiError, unwrap } from "../../lib/api";
+import { authClient } from "../../lib/auth-client";
+import { linkProps } from "../../lib/router";
+import type { GameMeta, SessionUser } from "../registry";
+import { formatScore } from "./format";
+import type { ArcadeDefinition, GamePhase } from "./types";
 
-const NICKNAME_KEY = "portal.asteroids.nickname";
+/**
+ * The arcade shell: everything a game should not have to think about.
+ *
+ * It owns the canvas and the engine's lifecycle, the HUD frame, the touch
+ * controls, the start/paused/game-over overlays, the score-saving panel (query,
+ * mutation, rank, nickname, 401 handling) and the links between `/play` and
+ * `/play/<slug>/scores`. A game supplies a definition and nothing else.
+ *
+ * The frame loop stays *outside* React: the engine reports events, which set
+ * state, which re-renders the shell — but the per-frame work never touches the
+ * component tree.
+ */
 
-interface SessionUser {
-  id: string;
-  email: string;
-  name: string;
-}
+const NICKNAME_KEY = "portal.nickname";
 
 interface SaveResponse {
   score: LeaderboardEntry;
@@ -23,6 +31,11 @@ interface SaveResponse {
 interface SavedState {
   rank: number;
   playerName: string;
+}
+
+interface BoardPayload {
+  scores: LeaderboardEntry[];
+  you: { score: number; rank: number } | null;
 }
 
 function defaultNickname(user: SessionUser): string {
@@ -39,37 +52,43 @@ function defaultNickname(user: SessionUser): string {
   return user.email.split("@")[0] ?? "Player";
 }
 
-function formatScore(value: number): string {
-  return String(Math.max(0, Math.floor(value))).padStart(4, "0");
-}
-
-export default function PlayScreen({ user }: { user: SessionUser }) {
+export function ArcadeShell<Hud, Result>({
+  game,
+  user,
+  definition,
+}: {
+  game: GameMeta;
+  user: SessionUser;
+  definition: ArcadeDefinition<Hud, Result>;
+}) {
   const queryClient = useQueryClient();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const gameRef = useRef<AsteroidsGame | null>(null);
+  const gameRef = useRef<ReturnType<ArcadeDefinition<Hud, Result>["createEngine"]> | null>(null);
 
   const [phase, setPhase] = useState<GamePhase>("idle");
-  const [hud, setHud] = useState<HudState>({ score: 0, lives: 3, level: 1 });
-  const [result, setResult] = useState<GameResult | null>(null);
+  const [hud, setHud] = useState<Hud | null>(null);
+  const [result, setResult] = useState<Result | null>(null);
   const [muted, setMuted] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [nickname, setNickname] = useState(() => defaultNickname(user));
   const [saved, setSaved] = useState<SavedState | null>(null);
   const toastTimer = useRef<number | null>(null);
 
-  /** The board, used on this screen only for the player's own best run. */
-  const scoresQuery = useQuery({
-    queryKey: ["scores"],
+  /** This player's best run in this game — shown before and after a run. */
+  const boardQuery = useQuery({
+    queryKey: ["scores", game.slug],
     queryFn: async () =>
-      unwrap<{ scores: LeaderboardEntry[]; you: { score: number; rank: number } | null }>(
-        await api.scores.$get(),
+      unwrap<BoardPayload>(
+        await api.games[":slug"].scores.$get({ param: { slug: game.slug } }),
       ),
   });
-  const personalBest = scoresQuery.data?.you?.score ?? null;
+  const personalBest = boardQuery.data?.you?.score ?? null;
 
   const saveScore = useMutation({
     mutationFn: async (input: { score: number; level: number; playerName: string }) =>
-      unwrap<SaveResponse>(await api.scores.$post({ json: input })),
+      unwrap<SaveResponse>(
+        await api.games[":slug"].scores.$post({ param: { slug: game.slug }, json: input }),
+      ),
     onSuccess: (data) => {
       setSaved({ rank: data.rank, playerName: data.score.playerName });
       try {
@@ -77,51 +96,54 @@ export default function PlayScreen({ user }: { user: SessionUser }) {
       } catch {
         // Non-fatal: the nickname just will not be remembered.
       }
+      // Both the board and the hub summary (which shows each game's best) are
+      // stale now.
       void queryClient.invalidateQueries({ queryKey: ["scores"] });
+      void queryClient.invalidateQueries({ queryKey: ["games"] });
     },
   });
 
   // An expired session must not leave a finished run unsaveable with a generic
-  // "couldn't save" message: sign out, which drops the player on the sign-in
-  // screen with the reason obvious.
+  // "couldn't save" message: sign out, which drops the player on sign-in.
   useEffect(() => {
-    const error = saveScore.error ?? scoresQuery.error;
+    const error = saveScore.error ?? boardQuery.error;
     if (error instanceof ApiError && error.status === 401) {
       void authClient.signOut().then(() => queryClient.clear());
     }
-  }, [saveScore.error, scoresQuery.error, queryClient]);
+  }, [saveScore.error, boardQuery.error, queryClient]);
 
-  // One engine per mount. It owns the canvas and the frame loop; React only
-  // receives state transitions, so a 60 fps game never re-renders the tree.
+  // One engine per mount, rebuilt only if the game or its definition changes
+  // (both are module constants, so in practice never). Rebuilding it would
+  // restart the game under the player.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return undefined;
 
-    const game = new AsteroidsGame(canvas, {
+    const engine = definition.createEngine(canvas, {
       onHud: setHud,
       onPhaseChange: setPhase,
       onMutedChange: setMuted,
-      onToast: (message) => {
-        setToast(message);
-        if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
-        toastTimer.current = window.setTimeout(() => setToast(null), 1200);
-      },
       onGameOver: (finished) => {
         setResult(finished);
         setSaved(null);
         saveScore.reset();
       },
+      onToast: (message) => {
+        setToast(message);
+        if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+        toastTimer.current = window.setTimeout(() => setToast(null), 1200);
+      },
     });
-    gameRef.current = game;
+    gameRef.current = engine;
 
     return () => {
-      game.destroy();
+      engine.destroy();
       gameRef.current = null;
       if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
     };
-    // The engine is built once per mount on purpose: `saveScore` is a stable
-    // mutation object, and rebuilding the engine would restart the game.
-  }, []);
+    // `saveScore` is a stable mutation object; the engine must not be rebuilt.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [definition, game.slug]);
 
   const startRun = useCallback(() => {
     setResult(null);
@@ -130,7 +152,8 @@ export default function PlayScreen({ user }: { user: SessionUser }) {
     gameRef.current?.start();
   }, [saveScore]);
 
-  const hold = (name: ControlName) => ({
+  /** Pointer-down/up on a touch control, with capture so release is reliable. */
+  const hold = (name: string) => ({
     onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => {
       event.preventDefault();
       try {
@@ -147,36 +170,31 @@ export default function PlayScreen({ user }: { user: SessionUser }) {
   });
 
   const playing = phase === "playing";
+  const submission = result === null ? null : definition.submission(result);
   // Only claim "personal best" once the board has actually loaded — otherwise a
   // first-time player is told every run is a record.
   const isNewBest =
-    result !== null &&
-    scoresQuery.isSuccess &&
-    (personalBest === null || result.score > personalBest);
+    submission !== null &&
+    boardQuery.isSuccess &&
+    (personalBest === null || submission.score > personalBest);
 
   return (
     <div className="play">
       <canvas
         ref={canvasRef}
         className="play-canvas"
-        aria-label="Asteroids playfield"
+        aria-label={`${game.title} playfield`}
         onPointerDown={() => gameRef.current?.primaryAction()}
       />
 
-      {phase !== "idle" ? (
+      {phase !== "idle" && hud !== null ? (
         <div className="play-hud" aria-live="off">
-          <span className="play-score">{formatScore(hud.score)}</span>
-          <span className="play-level">LEVEL {hud.level}</span>
-          <span className="play-lives" aria-label={`${hud.lives} ships left`}>
-            {Array.from({ length: Math.min(hud.lives, 8) }, (_, index) => (
-              <span className="mini-ship" key={index} aria-hidden="true" />
-            ))}
-          </span>
+          {definition.renderHud(hud)}
         </div>
       ) : null}
 
       <div className="play-corner play-corner--left">
-        <a className="corner-button" aria-label="Back to notes" title="Back" {...linkProps("/")}>
+        <a className="corner-button" aria-label="Back to games" title="Back" {...linkProps("/play")}>
           <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
             <path
               d="M15 5l-7 7 7 7"
@@ -220,77 +238,63 @@ export default function PlayScreen({ user }: { user: SessionUser }) {
         </div>
       ) : null}
 
-      {playing ? (
+      {playing && definition.controls.length > 0 ? (
         <div className="play-controls">
           <div className="control-group">
-            <button className="control-button" type="button" aria-label="Rotate left" {...hold("left")}>
-              <span className="control-glyph">&#9666;</span>
-              <span className="control-label">ROTATE</span>
-            </button>
-            <button
-              className="control-button"
-              type="button"
-              aria-label="Rotate right"
-              {...hold("right")}
-            >
-              <span className="control-glyph">&#9656;</span>
-              <span className="control-label">ROTATE</span>
-            </button>
+            {definition.controls
+              .filter((control) => !control.big)
+              .map((control) => (
+                <button
+                  key={control.name}
+                  className="control-button"
+                  type="button"
+                  aria-label={control.label}
+                  {...hold(control.name)}
+                >
+                  <span className="control-glyph" aria-hidden="true">
+                    {control.glyph}
+                  </span>
+                  <span className="control-label">{control.label}</span>
+                </button>
+              ))}
           </div>
-          <button
-            className="control-button control-button--big"
-            type="button"
-            aria-label="Thrust"
-            {...hold("thrust")}
-          >
-            <span className="control-glyph">&#9650;</span>
-            <span className="control-label">THRUST</span>
-          </button>
-          <button
-            className="control-button control-button--big"
-            type="button"
-            aria-label="Fire"
-            {...hold("fire")}
-          >
-            <span className="control-glyph">&#9679;</span>
-            <span className="control-label">FIRE</span>
-          </button>
+          {definition.controls
+            .filter((control) => control.big)
+            .map((control) => (
+              <button
+                key={control.name}
+                className="control-button control-button--big"
+                type="button"
+                aria-label={control.label}
+                {...hold(control.name)}
+              >
+                <span className="control-glyph" aria-hidden="true">
+                  {control.glyph}
+                </span>
+                <span className="control-label">{control.label}</span>
+              </button>
+            ))}
         </div>
       ) : null}
 
       {phase === "idle" ? (
         <div className="play-overlay">
           <div className="play-panel">
-            <h1 className="play-title">ASTEROIDS</h1>
-            <p className="play-sub">Rotate, thrust, and shoot the rocks before they shoot you.</p>
-            <dl className="play-keys">
-              <div>
-                <dt>&#8592; &#8594;</dt>
-                <dd>rotate</dd>
-              </div>
-              <div>
-                <dt>&#8593;</dt>
-                <dd>thrust</dd>
-              </div>
-              <div>
-                <dt>space</dt>
-                <dd>fire</dd>
-              </div>
-              <div>
-                <dt>P / M</dt>
-                <dd>pause / mute</dd>
-              </div>
-            </dl>
-            <p className="play-sub play-sub--muted">
-              On a phone, use the buttons along the bottom.
-            </p>
+            <h1 className="play-title">{game.title.toUpperCase()}</h1>
+            <p className="play-sub">{game.blurb}</p>
+            {definition.renderIntro?.({ personalBest })}
+            {definition.controls.length > 0 ? (
+              <p className="play-sub play-sub--muted">
+                On a phone, use the buttons along the bottom.
+              </p>
+            ) : null}
             {personalBest !== null ? (
               <p className="play-best">Your best: {formatScore(personalBest)}</p>
             ) : null}
             <button className="button button--primary play-start" type="button" onClick={startRun}>
               Launch
             </button>
-            <a className="link-button" {...linkProps("/scores")}>
+            <a className="link-button" {...linkProps(`/play/${game.slug}/scores`)}>
               High scores
             </a>
           </div>
@@ -301,9 +305,9 @@ export default function PlayScreen({ user }: { user: SessionUser }) {
         <div className="play-overlay">
           <div className="play-panel">
             <h2 className="play-title play-title--small">PAUSED</h2>
-            <p className="play-sub">
-              Score {formatScore(hud.score)} &middot; Level {hud.level}
-            </p>
+            {hud !== null ? (
+              <div className="play-hud play-hud--static">{definition.renderHud(hud)}</div>
+            ) : null}
             <div className="play-actions">
               <button
                 className="button button--primary"
@@ -316,26 +320,27 @@ export default function PlayScreen({ user }: { user: SessionUser }) {
                 Restart
               </button>
             </div>
-            <a className="link-button" {...linkProps("/")}>
-              Quit to notes
+            <a className="link-button" {...linkProps("/play")}>
+              Quit to games
             </a>
           </div>
         </div>
       ) : null}
 
-      {phase === "over" && result ? (
+      {phase === "over" && submission ? (
         <div className="play-overlay">
           <div className="play-panel">
             <h2 className="play-title play-title--small play-title--over">GAME OVER</h2>
             <p className="play-final">
-              <span className="play-final-score">{formatScore(result.score)}</span>
-              <span className="play-final-meta">LEVEL {result.level}</span>
+              <span className="play-final-score">{formatScore(submission.score)}</span>
+              <span className="play-final-meta">LEVEL {submission.level}</span>
             </p>
             {isNewBest ? <p className="play-best play-best--new">New personal best</p> : null}
 
             {saved ? (
               <p className="play-saved" role="status">
-                Saved as <strong>{saved.playerName}</strong> &mdash; rank <strong>#{saved.rank}</strong>
+                Saved as <strong>{saved.playerName}</strong> &mdash; rank{" "}
+                <strong>#{saved.rank}</strong>
               </p>
             ) : (
               <div className="play-save">
@@ -356,8 +361,8 @@ export default function PlayScreen({ user }: { user: SessionUser }) {
                   disabled={!nickname.trim() || saveScore.isPending}
                   onClick={() =>
                     saveScore.mutate({
-                      score: result.score,
-                      level: result.level,
+                      score: submission.score,
+                      level: submission.level,
                       playerName: nickname.trim(),
                     })
                   }
@@ -378,7 +383,7 @@ export default function PlayScreen({ user }: { user: SessionUser }) {
               <button className="button button--ghost" type="button" onClick={startRun}>
                 Play again
               </button>
-              <a className="link-button" {...linkProps("/scores")}>
+              <a className="link-button" {...linkProps(`/play/${game.slug}/scores`)}>
                 Leaderboard
               </a>
             </div>

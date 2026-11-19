@@ -4,7 +4,7 @@ import { logger } from "hono/logger";
 import { getAuth } from "./auth.js";
 import { lastDeliveryOutcome, mailDeliveryMode } from "./mail.js";
 import { notesRoutes } from "./routes/notes.js";
-import { scoresRoutes } from "./routes/scores.js";
+import { gamesRoutes, legacyScoresRoutes } from "./routes/scores.js";
 import type { AppEnv } from "./types.js";
 
 const allowedOrigins = (
@@ -83,7 +83,11 @@ export const app = new Hono<AppEnv>()
   })
 
   .route("/api/notes", notesRoutes)
-  .route("/api/scores", scoresRoutes);
+  // Per-game boards: /api/games, /api/games/<slug>/scores.
+  .route("/api/games", gamesRoutes)
+  // Pre-multi-game alias for the default game's board. Kept because a user on
+  // a service-worker-cached older shell still calls it.
+  .route("/api/scores", legacyScoresRoutes);
 
 /**
  * The contract the PWA compiles against. `hc<AppType>()` turns this into a

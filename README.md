@@ -52,33 +52,63 @@ To send real email, set `RESEND_API_KEY` and `MAIL_FROM` — over HTTPS, never S
 
 ## Screens
 
-The client routes on the path — no router dependency, three screens:
+The client routes on the path — no router dependency, one namespace for games so the URL can
+grow:
 
 | Path | Screen |
 | --- | --- |
 | `/` | Notes (the portal's original screen) |
-| `/play` | Asteroids — full-screen canvas game with touch controls |
-| `/scores` | High scores — top 20 runs plus the player's own best and rank |
+| `/play` | Games hub — one card per game, with your best and the top score |
+| `/play/<slug>` | That game, e.g. `/play/asteroids` |
+| `/play/<slug>/scores` | That game's board — top 20 plus your own best and rank |
+| `/scores` | Legacy alias → the default game's board (bookmarks, cached shells) |
 
-Asteroids is a port of a standalone 900-line `asteroids.html` into typed modules under
-`apps/pwa/src/game/`: `engine.ts` owns the canvas and the frame loop, `audio.ts` the Web Audio
-effects, `constants.ts` the tuning. The engine knows nothing about React — it reports score,
-phase and game-over events through callbacks, and the React shell
-(`apps/pwa/src/screens/PlayScreen.tsx`) draws the HUD, menus and the game-over panel. That split
-is what keeps 60 fps out of the component tree.
+Each game is its own lazy chunk (`React.lazy` via the registry), so opening one never downloads
+another's engine: the initial shell is ~101 KB gzipped and the Asteroids chunk is ~8 KB on top.
+A game's slug is its identity everywhere — the URL, the API path, and the `game` column that
+scopes its board.
 
-A finished run is saved with a nickname, and the board is server-side:
+**Adding a game** is one registry entry, one definition, and an engine:
 
 ```
-GET  /api/scores   → { scores: [{ id, playerName, score, level, createdAt, isYou }], you: { score, level, createdAt, rank } | null }
-POST /api/scores   → { score: { …entry }, rank }        body: { score, level, playerName? }
+apps/pwa/src/games/registry.ts        the one list: slug, title, blurb, lazy component
+apps/pwa/src/games/slugs.ts           the slugs alone (dependency-free, imported by the API tests)
+apps/pwa/src/games/shared/            ArcadeShell, formatting, the test harness
+apps/pwa/src/games/<slug>/            engine + definition.tsx + a three-line Game.tsx
 ```
 
-Both require a session. The board is capped at 20 rows; ties are ordered by time, so an equal
-score never demotes an earlier run. Scores are client-reported — validation bounds them
-(≤ 1 000 000 points, level ≤ 100, 24-character name) but a determined player can still claim
-any number; see `docs/ARCHITECTURE.md` §6 for why that is accepted and what it would take to
-fix.
+Everything a game should not re-implement lives in `games/shared/ArcadeShell.tsx`: the canvas
+and the engine's lifecycle, the HUD frame, the touch controls, the start/paused/game-over
+overlays, the score-saving panel (rank, nickname, retry, session expiry), mute, toasts, and the
+links to `/play` and the board. A game supplies a **definition** — its controls, a HUD renderer,
+an intro renderer, an engine factory, and a mapping from its result to `{ score, level }` — and
+`Game.tsx` is three lines. `games/asteroids/Game.tsx` is literally the whole of that game's
+integration.
+
+The engines themselves stay React-free and take the shell's callbacks as opaque events, so a
+60 fps loop never re-renders the component tree.
+
+Asteroids is a port of a standalone 900-line `asteroids.html` into typed modules. `engine.ts`
+owns the canvas and the frame loop, `audio.ts` the Web Audio effects, `constants.ts` the
+tuning. The engine knows nothing about React — it reports score, phase and game-over events
+through callbacks, and the React shell (`games/asteroids/Game.tsx`) draws the HUD, menus and the
+game-over panel. That split is what keeps 60 fps out of the component tree.
+
+A finished run is saved with a nickname, and each board is server-side and per game:
+
+```
+GET  /api/games                  → { games: [{ slug, top, you }] }   the hub, one card per game
+GET  /api/games/<slug>/scores    → { game, scores: [{ id, playerName, score, level, createdAt, isYou }], you: { score, level, createdAt, rank } | null }
+POST /api/games/<slug>/scores    → { game, score: { …entry }, rank }   body: { score, level, playerName? }
+GET  /api/scores · POST /api/scores   alias for the default game (asteroids)
+```
+
+All require a session. An unknown slug is a `404`, not a new empty board — the server validates
+against its own allowlist (`apps/api/src/games.ts`), and a test proves every game the client can
+play has a board there. Boards are capped at 20 rows; ties are ordered by time, so an equal score
+never demotes an earlier run. Scores are client-reported — validation bounds them (≤ 1 000 000
+points, level ≤ 100, 24-character name) but a determined player can still claim any number; see
+`docs/ARCHITECTURE.md` §6 for why that is accepted and what it would take to fix.
 
 ## Commands
 
@@ -95,9 +125,9 @@ fix.
 ## Layout
 
 ```
-apps/api      Hono service — auth, notes + scores API, schema, migrations, tests
-apps/pwa      React app — sign-in, notes, Asteroids, high scores, service worker, manifest
-apps/pwa/src/game   Asteroids engine, audio and constants (no React inside)
+apps/api      Hono service — auth, notes + per-game scores API, schema, migrations, tests
+apps/pwa      React app — sign-in, notes, games hub, service worker, manifest
+apps/pwa/src/games         registry, shared slugs, one folder per game (no React in engines)
 docs          ARCHITECTURE.md
 render.yaml   API + Postgres + static site, as code
 ```
