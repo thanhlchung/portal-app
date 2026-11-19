@@ -59,7 +59,7 @@ grow:
 | --- | --- |
 | `/` | Notes (the portal's original screen) |
 | `/play` | Games hub — one card per game, with your best and the top score |
-| `/play/<slug>` | That game, e.g. `/play/asteroids` |
+| `/play/<slug>` | That game: `asteroids`, `space-invaders` |
 | `/play/<slug>/scores` | That game's board — top 20 plus your own best and rank |
 | `/scores` | Legacy alias → the default game's board (bookmarks, cached shells) |
 
@@ -88,11 +88,12 @@ integration.
 The engines themselves stay React-free and take the shell's callbacks as opaque events, so a
 60 fps loop never re-renders the component tree.
 
-Asteroids is a port of a standalone 900-line `asteroids.html` into typed modules. `engine.ts`
-owns the canvas and the frame loop, `audio.ts` the Web Audio effects, `constants.ts` the
-tuning. The engine knows nothing about React — it reports score, phase and game-over events
-through callbacks, and the React shell (`games/asteroids/Game.tsx`) draws the HUD, menus and the
-game-over panel. That split is what keeps 60 fps out of the component tree.
+Both games are ports of standalone single-file HTML builds into typed modules, one folder each.
+An `engine.ts` owns the canvas and the frame loop, `constants.ts` the tuning, `sprites.ts` or
+`audio.ts` the assets; a `definition.tsx` describes the game to the shell; and `Game.tsx` wires
+the two together in three lines. Engines know nothing about React — they report score, phase and
+game-over events through callbacks, and the shell draws the HUD, menus and game-over panel. That
+split is what keeps 60 fps out of the component tree.
 
 A finished run is saved with a nickname, and each board is server-side and per game:
 

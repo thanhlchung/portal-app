@@ -11,7 +11,7 @@
  * public identity of a game — it appears in `/play/<slug>`, in
  * `/play/<slug>/scores`, and as `score.game` in the database.
  */
-export const GAME_SLUGS = ["asteroids"] as const;
+export const GAME_SLUGS = ["asteroids", "space-invaders"] as const;
 
 export type GameSlug = (typeof GAME_SLUGS)[number];
 

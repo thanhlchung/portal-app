@@ -8,6 +8,7 @@
  * loop never touches React, and React never touches simulation state.
  */
 
+import { isActivationTarget, isTypingTarget } from "../shared/keys";
 import { GameAudio } from "./audio";
 import {
   ASTEROID_SIZES,
@@ -139,23 +140,6 @@ const KEYMAP: Record<string, ControlName> = {
 
 /** Keys whose default browser behaviour (scrolling, button activation) must not fire. */
 const SWALLOWED_KEYS = new Set([" ", "Spacebar", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]);
-
-/** Keyboard shortcuts must not hijack typing in the nickname field. */
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.isContentEditable) return true;
-  return ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
-}
-
-/**
- * Elements that already do something on Enter. The game must not start a new
- * run in the same keystroke that presses "Save score".
- */
-function isActivationTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.isContentEditable) return true;
-  return ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"].includes(target.tagName);
-}
 
 function emptyShip(): Ship {
   return {

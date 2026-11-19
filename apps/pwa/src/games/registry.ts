@@ -43,6 +43,13 @@ export const games: readonly GameMeta[] = [
     controls: "Arrow keys or the on-screen buttons",
     Component: lazy(() => import("./asteroids/Game")),
   },
+  {
+    slug: "space-invaders",
+    title: "Space Invaders",
+    blurb: "Clear the marching fleet before it reaches the ground — and shoot the UFO for bonus points.",
+    controls: "Arrow keys or the on-screen buttons",
+    Component: lazy(() => import("./space-invaders/Game")),
+  },
 ];
 
 export function findGame(slug: string | undefined): GameMeta | undefined {

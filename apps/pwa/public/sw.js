@@ -18,8 +18,9 @@
 
 // Bumped whenever the shell changes: a new worker purges the old caches, so a
 // returning user cannot be left on a shell that predates a screen's existence
-// (/play and /scores arrived with v3; the /play/<slug> hub with v4).
-const VERSION = "v4";
+// (/play and /scores arrived with v3; the /play/<slug> hub with v4; Space
+// Invaders in the games hub with v5).
+const VERSION = "v5";
 const SHELL_CACHE = `portal-shell-${VERSION}`;
 const ASSET_CACHE = `portal-assets-${VERSION}`;
 
