@@ -179,6 +179,7 @@ session       (id, token UNIQUE, userId→user, expiresAt, …)  -- Better Auth
 account       (id, providerId, accountId, userId→user, …)    -- Better Auth
 verification  (id, identifier, value, expiresAt, …)          -- the OTPs
 note          (id uuid, userId→user, title, body, createdAt, updatedAt)
+score         (id uuid, userId→user, playerName, score, level, createdAt)
 ```
 
 **Own the user table.** Using Better Auth's Drizzle adapter means the auth tables live in *this* database, next to application data, joined by real foreign keys. There is no vendor API between the app and who its users are; leaving a managed provider later would be a migration, not an archaeology project.
@@ -187,7 +188,9 @@ note          (id uuid, userId→user, title, body, createdAt, updatedAt)
 
 **Two drivers, one schema.** `DATABASE_URL` unset → embedded **PGlite**, a real Postgres 18 compiled to WebAssembly, persisted under `apps/api/.pglite`. Set → `node-postgres` against Render Postgres. Both run the same migration files. This is why `pnpm dev` works on a fresh machine with no database installed and no cloud account, and why local dev cannot silently diverge in dialect or SQL semantics.
 
-**Deletes cascade.** Removing a user removes their sessions and notes — `onDelete: "cascade"` in the schema, so an account deletion is one statement rather than a cleanup job.
+**Deletes cascade.** Removing a user removes their sessions, notes and scores — `onDelete: "cascade"` in the schema, so an account deletion is one statement rather than a cleanup job.
+
+**A leaderboard score is client-reported, and the schema says so.** The Asteroids game runs in the browser, so the server cannot recompute a run: `POST /api/scores` validates bounds (score ≤ 1 000 000, level ≤ 100, a 24-character nickname) and nothing more. The row carries a denormalised `playerName` rather than joining to `user`, because the board is visible to every signed-in player and must never show an email address, and because a rename must not rewrite past results. Ties break on `createdAt`, so an equal score never demotes the earlier run — that rule is what makes `rank` (1 + the number of better runs) stable and repeatable. A cheat-proof board would require server-side simulation, which would defeat the point of a client-side arcade game; this is a leaderboard among people who know each other, not an anti-cheat system.
 
 **What the client caches, and what it does not.** TanStack Query persists the notes list to `localStorage` for offline reads. It is a cache with a `buster` version, never the source of truth — which matters because iOS may evict it (§8).
 
@@ -491,7 +494,16 @@ claiming an email was sent. That defect only surfaced by using the app.
 
 - **Visual rendering and interaction.** No browser exists on this device, so the
   CSS, safe-area behaviour and the code-input feel have never been seen. This
-  remains the highest-risk gap.
+  remains the highest-risk gap. The Asteroids screens are in the same position:
+  the engine is covered by headless simulation tests (positions stay finite
+  across the wrap, rocks split, waves advance, the run ends and reports, pause
+  freezes), but nothing has confirmed how the HUD, the touch controls or the
+  overlays actually look or feel on a phone.
+- **The game's frame rate on a low-end phone.** The simulation is cheap (no
+  allocation inside the loop beyond particles and bullets), but a 60 fps canvas
+  on a 0.1-CPU-class device is unmeasured.
+- **Leaderboard trust.** A score is whatever the client says it is, bounded by
+  validation only, as described in §6. Nobody has tried to game it.
 - **Delivery to arbitrary addresses.** Real email is wired and verified (see
   below), but through Resend's shared test sender `onboarding@resend.dev`, which
   only delivers to the address that owns the Resend account. Sending to real

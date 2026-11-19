@@ -11,3 +11,5 @@ export interface AppEnv {
 
 export type Note = typeof schema.note.$inferSelect;
 export type NewNote = typeof schema.note.$inferInsert;
+export type Score = typeof schema.score.$inferSelect;
+export type NewScore = typeof schema.score.$inferInsert;

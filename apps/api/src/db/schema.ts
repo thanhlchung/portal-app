@@ -2,6 +2,7 @@ import { relations } from "drizzle-orm";
 import {
   boolean,
   index,
+  integer,
   pgTable,
   text,
   timestamp,
@@ -120,10 +121,48 @@ export const note = pgTable(
   (table) => [index("note_userId_createdAt_idx").on(table.userId, table.createdAt)],
 );
 
+/**
+ * One row per finished Asteroids run.
+ *
+ * The score is submitted by the client: the game runs in the browser, so the
+ * server cannot recompute it. Values are bounded and validated so garbage
+ * cannot be stored, but a determined player can still POST any number they
+ * like. That is accepted — this is a leaderboard among people who know each
+ * other, not an anti-cheat system. Genuine anti-cheat would require simulating
+ * the game server-side, which would defeat the point of a client-side arcade
+ * game.
+ *
+ * `playerName` is denormalised on purpose: the leaderboard is visible to every
+ * signed-in player, so it must show a chosen nickname and never an email
+ * address, and it must not silently rewrite history when an account is renamed.
+ */
+export const score = pgTable(
+  "score",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    playerName: text("playerName").notNull(),
+    score: integer("score").notNull(),
+    level: integer("level").notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    // Leaderboard read is ORDER BY score DESC LIMIT n; rank is "how many rows
+    // beat this score". Both are range scans over this index.
+    index("score_ranking_idx").on(table.score),
+    index("score_userId_createdAt_idx").on(table.userId, table.createdAt),
+  ],
+);
+
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
   notes: many(note),
+  scores: many(score),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -138,14 +177,20 @@ export const noteRelations = relations(note, ({ one }) => ({
   user: one(user, { fields: [note.userId], references: [user.id] }),
 }));
 
+export const scoreRelations = relations(score, ({ one }) => ({
+  user: one(user, { fields: [score.userId], references: [user.id] }),
+}));
+
 export const schema = {
   user,
   session,
   account,
   verification,
   note,
+  score,
   userRelations,
   sessionRelations,
   accountRelations,
   noteRelations,
+  scoreRelations,
 };

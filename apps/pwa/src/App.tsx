@@ -1,9 +1,22 @@
 import { authClient } from "./lib/auth-client";
+import { usePath } from "./lib/router";
 import NotesScreen from "./screens/NotesScreen";
+import PlayScreen from "./screens/PlayScreen";
+import ScoresScreen from "./screens/ScoresScreen";
 import SignInScreen from "./screens/SignInScreen";
 
+/**
+ * Three screens, selected by the path. Every one of them except sign-in needs a
+ * session, so the gate lives here rather than in each screen — a new route
+ * cannot accidentally ship unauthenticated, matching how the API's own
+ * middleware works.
+ *
+ * Unknown paths fall back to notes rather than 404ing: a stale bookmark or a
+ * link from an older build should land somewhere useful.
+ */
 export default function App() {
   const { data: session, isPending } = authClient.useSession();
+  const path = usePath();
 
   // First paint after a cold launch: show the shell, not a spinner, so the app
   // never appears to flash or stall while the session is confirmed.
@@ -23,6 +36,9 @@ export default function App() {
   }
 
   if (!session) return <SignInScreen />;
+
+  if (path === "/play") return <PlayScreen user={session.user} />;
+  if (path === "/scores") return <ScoresScreen />;
 
   return <NotesScreen user={session.user} />;
 }

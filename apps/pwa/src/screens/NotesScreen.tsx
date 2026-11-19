@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { InstallPrompt } from "../components/InstallPrompt";
 import { api, ApiError, unwrap } from "../lib/api";
 import { authClient } from "../lib/auth-client";
+import { linkProps } from "../lib/router";
 
 type NotesPayload = { notes: Note[] };
 
@@ -136,16 +137,24 @@ export default function NotesScreen({
           <span className="brand-mark" aria-hidden="true" />
           <span className="brand-name">Portal</span>
         </div>
-        <button
-          className="link-button link-button--muted"
-          type="button"
-          onClick={async () => {
-            await authClient.signOut();
-            queryClient.clear();
-          }}
-        >
-          Sign out
-        </button>
+        <nav className="header-actions" aria-label="Sections">
+          <a className="link-button link-button--muted" {...linkProps("/play")}>
+            Play
+          </a>
+          <a className="link-button link-button--muted" {...linkProps("/scores")}>
+            Scores
+          </a>
+          <button
+            className="link-button link-button--muted"
+            type="button"
+            onClick={async () => {
+              await authClient.signOut();
+              queryClient.clear();
+            }}
+          >
+            Sign out
+          </button>
+        </nav>
       </header>
 
       {!online ? (

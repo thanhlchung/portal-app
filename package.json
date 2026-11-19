@@ -13,7 +13,7 @@
     "db:migrate": "pnpm --filter @portal/api db:migrate",
     "build": "pnpm --filter @portal/pwa build",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm --filter @portal/api test"
+    "test": "pnpm -r test"
   },
   "devDependencies": {
     "typescript": "~5.9.3"

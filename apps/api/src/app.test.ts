@@ -219,3 +219,181 @@ describe("email template", () => {
     assert.ok(/expires in 10 minutes/i.test(html));
   });
 });
+
+interface BoardBody {
+  scores: {
+    id: string;
+    playerName: string;
+    score: number;
+    level: number;
+    createdAt: string;
+    isYou: boolean;
+  }[];
+  you: { score: number; level: number; createdAt: string; rank: number } | null;
+}
+
+async function board(cookie: string): Promise<BoardBody> {
+  const response = await request("/api/scores", { cookie });
+  assert.equal(response.status, 200);
+  return (await response.json()) as BoardBody;
+}
+
+/**
+ * Tests run in declaration order against one shared database, so these build on
+ * each other deliberately: the ordering case depends on rows written by the
+ * earlier cases. Every assertion is still stated in terms of the response, not
+ * of hardcoded global positions.
+ */
+describe("scores", () => {
+  it("rejects unauthenticated reads and writes", async () => {
+    assert.equal((await request("/api/scores")).status, 401);
+    assert.equal(
+      (await request("/api/scores", { method: "POST", body: { score: 100, level: 1 } })).status,
+      401,
+    );
+  });
+
+  it("records a run, defaults the name and reports a rank", async () => {
+    const cookie = await signIn("scorer@example.com");
+    const response = await request("/api/scores", {
+      method: "POST",
+      body: { score: 1200, level: 3 },
+      cookie,
+    });
+    assert.equal(response.status, 201);
+    const body = (await response.json()) as {
+      score: { playerName: string; score: number; level: number; createdAt: string };
+      rank: number;
+    };
+    // The sign-in flow above names this account "Test User".
+    assert.equal(body.score.playerName, "Test User");
+    assert.equal(body.score.score, 1200);
+    assert.equal(body.score.level, 3);
+    assert.equal(typeof body.score.createdAt, "string");
+    assert.equal(body.rank, 1);
+  });
+
+  it("accepts a nickname and trims it", async () => {
+    const cookie = await signIn("nickname@example.com");
+    const response = await request("/api/scores", {
+      method: "POST",
+      body: { score: 50, level: 1, playerName: "  ACE  " },
+      cookie,
+    });
+    assert.equal(response.status, 201);
+    const body = (await response.json()) as { score: { playerName: string } };
+    assert.equal(body.score.playerName, "ACE");
+  });
+
+  it("rejects scores that could not have been earned", async () => {
+    const cookie = await signIn("cheater@example.com");
+    const rejected = [
+      { score: -1, level: 1 },
+      { score: 12.5, level: 1 },
+      { score: 1_000_001, level: 1 },
+      { score: 10, level: 0 },
+      { score: 10, level: 101 },
+      { score: 10, level: 1, playerName: "x".repeat(25) },
+      { score: 10, level: 1, playerName: "   " },
+      { score: "1000", level: 1 },
+    ];
+    for (const body of rejected) {
+      const response = await request("/api/scores", { method: "POST", body, cookie });
+      assert.equal(response.status, 400, `expected 400 for ${JSON.stringify(body)}`);
+    }
+  });
+
+  it("orders the board by score and reports the caller's best run", async () => {
+    const low = await signIn("low@example.com");
+    await request("/api/scores", {
+      method: "POST",
+      body: { score: 300, level: 1 },
+      cookie: low,
+    });
+    await request("/api/scores", {
+      method: "POST",
+      body: { score: 800, level: 2 },
+      cookie: low,
+    });
+
+    const high = await signIn("high@example.com");
+    await request("/api/scores", {
+      method: "POST",
+      body: { score: 2500, level: 5 },
+      cookie: high,
+    });
+
+    const { scores, you } = await board(low);
+
+    const values = scores.map((entry) => entry.score);
+    assert.deepEqual(values, [...values].sort((a, b) => b - a), "board must be descending");
+    assert.equal(values[0], 2500);
+
+    assert.ok(you, "a player with runs must get a best entry");
+    // Best run of *this* player, not the best run overall.
+    assert.equal(you.score, 800);
+    assert.equal(you.level, 2);
+    // Rank counts everything that beat this run, so it may point past the
+    // returned page when the board is longer than one page.
+    assert.equal(you.rank, scores.filter((entry) => entry.score > 800).length + 1);
+
+    assert.equal(scores.find((entry) => entry.score === 800)?.isYou, true);
+    assert.equal(scores.find((entry) => entry.score === 2500)?.isYou, false);
+  });
+
+  it("never exposes a player's email address", async () => {
+    const cookie = await signIn("private@example.com");
+    await request("/api/scores", {
+      method: "POST",
+      body: { score: 42, level: 1 },
+      cookie,
+    });
+    const text = JSON.stringify(await board(cookie));
+    // The board is visible to every signed-in player, so the payload may only
+    // carry nicknames — never addresses, not even as a fallback.
+    assert.ok(!text.includes("@example.com"), "email address leaked into the board");
+  });
+
+  it("gives equal scores the same standing, ordered by time", async () => {
+    const first = await signIn("tie-a@example.com");
+    await request("/api/scores", {
+      method: "POST",
+      body: { score: 900, level: 2 },
+      cookie: first,
+    });
+    const second = await signIn("tie-b@example.com");
+    await request("/api/scores", {
+      method: "POST",
+      body: { score: 900, level: 2 },
+      cookie: second,
+    });
+
+    const { scores } = await board(second);
+    const tied = scores.filter((entry) => entry.score === 900);
+    assert.equal(tied.length, 2);
+    // The earlier run is listed first, so a new equal score never demotes it.
+    assert.equal(tied[0]!.isYou, false);
+    assert.equal(tied[1]!.isYou, true);
+  });
+
+  it("caps the board at twenty entries, keeping the highest", async () => {
+    const cookie = await signIn("bulk@example.com");
+    for (let i = 1; i <= 22; i += 1) {
+      const response = await request("/api/scores", {
+        method: "POST",
+        body: { score: 100_000 + i, level: 10 },
+        cookie,
+      });
+      assert.equal(response.status, 201);
+    }
+
+    const { scores, you } = await board(cookie);
+    assert.equal(scores.length, 20);
+    assert.equal(scores[0]!.score, 100_022);
+    assert.equal(scores[0]!.level, 10);
+    // A run outside the returned page still has a real rank.
+    assert.ok(you);
+    assert.equal(you.score, 100_022);
+    assert.equal(you.rank, 1);
+  });
+});

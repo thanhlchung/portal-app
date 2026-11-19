@@ -16,7 +16,10 @@
  *   person to open the app.
  */
 
-const VERSION = "v2";
+// Bumped whenever the shell changes: a new worker purges the old caches, so a
+// returning user cannot be left on a shell that predates a screen's existence
+// (/play and /scores arrived with v3).
+const VERSION = "v3";
 const SHELL_CACHE = `portal-shell-${VERSION}`;
 const ASSET_CACHE = `portal-assets-${VERSION}`;
 
