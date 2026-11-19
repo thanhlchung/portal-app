@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 
 /**
  * The contract between a game and the arcade shell.
@@ -62,6 +62,22 @@ export interface ControlSpec {
   big?: boolean;
 }
 
+/**
+ * The pointer wiring for one on-screen control, produced by the shell.
+ *
+ * It presses `setInput(name, true)` on pointer-down (with capture, so a release
+ * outside the button still arrives) and `false` on every release path. A tap
+ * action — rotate, hard drop, hold — is just the rising edge of that flag, which
+ * the engine can act on once, so taps and holds share one mechanism.
+ */
+export interface ControlHandlers {
+  onPointerDown(event: ReactPointerEvent<HTMLButtonElement>): void;
+  onPointerUp(): void;
+  onPointerCancel(): void;
+  onLostPointerCapture(): void;
+  onContextMenu(event: ReactMouseEvent): void;
+}
+
 export interface IntroContext {
   /** The caller's best score in this game, or null if they have none yet. */
   personalBest: number | null;
@@ -76,6 +92,15 @@ export interface ArcadeDefinition<Hud, Result> {
   renderHud(hud: Hud): ReactNode;
   /** Optional instructions for the start panel; the shell adds the buttons. */
   renderIntro?(context: IntroContext): ReactNode;
+  /**
+   * Optional custom layout for the on-screen pad.
+   *
+   * The default renderer fits `controls` into one row, which is right for two
+   * directions and a trigger. A game that needs more (Tetris: move, rotate,
+   * soft drop, hard drop, hold) lays out its own pad here using the bindings the
+   * shell hands it — the wiring stays the shell's, only the arrangement moves.
+   */
+  renderControls?(bind: (name: string) => ControlHandlers): ReactNode;
   /** Map this game's result onto the two columns the API stores. */
   submission(result: Result): ScoreSubmission;
 }

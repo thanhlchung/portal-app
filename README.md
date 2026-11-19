@@ -59,7 +59,7 @@ grow:
 | --- | --- |
 | `/` | Notes (the portal's original screen) |
 | `/play` | Games hub — one card per game, with your best and the top score |
-| `/play/<slug>` | That game: `asteroids`, `space-invaders` |
+| `/play/<slug>` | That game: `asteroids`, `space-invaders`, `tetris` |
 | `/play/<slug>/scores` | That game's board — top 20 plus your own best and rank |
 | `/scores` | Legacy alias → the default game's board (bookmarks, cached shells) |
 
@@ -88,7 +88,7 @@ integration.
 The engines themselves stay React-free and take the shell's callbacks as opaque events, so a
 60 fps loop never re-renders the component tree.
 
-Both games are ports of standalone single-file HTML builds into typed modules, one folder each.
+Each game is a port of a standalone single-file HTML build into typed modules, one folder each.
 An `engine.ts` owns the canvas and the frame loop, `constants.ts` the tuning, `sprites.ts` or
 `audio.ts` the assets; a `definition.tsx` describes the game to the shell; and `Game.tsx` wires
 the two together in three lines. Engines know nothing about React — they report score, phase and

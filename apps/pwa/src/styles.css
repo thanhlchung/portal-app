@@ -1368,6 +1368,60 @@ body {
   opacity: 0.75;
 }
 
+
+/* ---------- Tetris pad ----------
+   Six controls do not fit the single-row pad, so this game lays out a 2x3 grid
+   of its own inside the shell's control area. */
+
+.play-controls--custom {
+  display: block;
+  height: auto;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+}
+
+.tetris-pad {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  width: min(100%, 360px);
+  margin: 0 auto;
+  pointer-events: none;
+}
+
+.pad-button {
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 56px;
+  border-radius: 14px;
+  border: 2px solid rgb(214 245 227 / 0.3);
+  background: rgb(20 32 30 / 0.42);
+  color: #d6f5e3;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 22px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: 0 0 14px rgb(124 245 193 / 0.08), inset 0 0 10px rgb(124 245 193 / 0.05);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  transition: transform 0.05s ease, background 0.1s ease, border-color 0.1s ease;
+}
+
+.pad-button--small {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+}
+
+.pad-button:active {
+  background: rgb(124 245 193 / 0.22);
+  border-color: #7cf5c1;
+  transform: scale(0.95);
+}
+
 /* ---------- accessibility ---------- */
 
 @media (prefers-reduced-motion: reduce) {

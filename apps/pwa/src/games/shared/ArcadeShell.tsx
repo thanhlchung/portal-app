@@ -6,7 +6,7 @@ import { authClient } from "../../lib/auth-client";
 import { linkProps } from "../../lib/router";
 import type { GameMeta, SessionUser } from "../registry";
 import { formatScore } from "./format";
-import type { ArcadeDefinition, GamePhase } from "./types";
+import type { ArcadeDefinition, ControlHandlers, GamePhase } from "./types";
 
 /**
  * The arcade shell: everything a game should not have to think about.
@@ -153,7 +153,7 @@ export function ArcadeShell<Hud, Result>({
   }, [saveScore]);
 
   /** Pointer-down/up on a touch control, with capture so release is reliable. */
-  const hold = (name: string) => ({
+  const hold = (name: string): ControlHandlers => ({
     onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => {
       event.preventDefault();
       try {
@@ -238,7 +238,13 @@ export function ArcadeShell<Hud, Result>({
         </div>
       ) : null}
 
-      {playing && definition.controls.length > 0 ? (
+      {playing && definition.controls.length > 0 && definition.renderControls ? (
+        <div className="play-controls play-controls--custom">
+          {definition.renderControls(hold)}
+        </div>
+      ) : null}
+
+      {playing && definition.controls.length > 0 && !definition.renderControls ? (
         <div className="play-controls">
           <div className="control-group">
             {definition.controls

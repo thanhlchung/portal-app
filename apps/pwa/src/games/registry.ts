@@ -50,6 +50,13 @@ export const games: readonly GameMeta[] = [
     controls: "Arrow keys or the on-screen buttons",
     Component: lazy(() => import("./space-invaders/Game")),
   },
+  {
+    slug: "tetris",
+    title: "Tetris",
+    blurb: "Stack the falling blocks and clear lines — four at a time if you can.",
+    controls: "Arrow keys or the on-screen pad",
+    Component: lazy(() => import("./tetris/Game")),
+  },
 ];
 
 export function findGame(slug: string | undefined): GameMeta | undefined {
