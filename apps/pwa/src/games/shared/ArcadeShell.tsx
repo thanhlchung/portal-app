@@ -6,7 +6,13 @@ import { authClient } from "../../lib/auth-client";
 import { linkProps } from "../../lib/router";
 import type { GameMeta, SessionUser } from "../registry";
 import { formatScore } from "./format";
-import type { ArcadeDefinition, ControlHandlers, GamePhase, RunOutcome } from "./types";
+import type {
+  ArcadeDefinition,
+  ArcadeEngine,
+  ControlHandlers,
+  GamePhase,
+  RunOutcome,
+} from "./types";
 
 /**
  * The arcade shell: everything a game should not have to think about.
@@ -73,18 +79,20 @@ function outcomeClass(outcome: "win" | "loss" | "draw"): string {
   return "play-title--draw";
 }
 
-export function ArcadeShell<Hud, Result>({
+export function ArcadeShell<Hud, Result, Engine extends ArcadeEngine = ArcadeEngine>({
   game,
   user,
   definition,
 }: {
   game: GameMeta;
   user: SessionUser;
-  definition: ArcadeDefinition<Hud, Result>;
+  definition: ArcadeDefinition<Hud, Result, Engine>;
 }) {
   const queryClient = useQueryClient();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const gameRef = useRef<ReturnType<ArcadeDefinition<Hud, Result>["createEngine"]> | null>(null);
+  const gameRef = useRef<Engine | null>(null);
+  /** The same engine, as state, so a game's settings UI can configure it. */
+  const [engine, setEngine] = useState<Engine | null>(null);
 
   const [phase, setPhase] = useState<GamePhase>("idle");
   const [hud, setHud] = useState<Hud | null>(null);
@@ -183,10 +191,12 @@ export function ArcadeShell<Hud, Result>({
       },
     });
     gameRef.current = engine;
+    setEngine(engine);
 
     return () => {
       engine.destroy();
       gameRef.current = null;
+      setEngine(null);
       if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
     };
     // `report` is a stable mutation object; the engine must not be rebuilt.
@@ -352,6 +362,7 @@ export function ArcadeShell<Hud, Result>({
             <h1 className="play-title">{game.title.toUpperCase()}</h1>
             <p className="play-sub">{game.blurb}</p>
             {definition.renderIntro?.({ personalBest: myScore?.score ?? null })}
+            {definition.renderSettings?.({ engine })}
             {definition.controls.length > 0 ? (
               <p className="play-sub play-sub--muted">
                 On a phone, use the buttons along the bottom.

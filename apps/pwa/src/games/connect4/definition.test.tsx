@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { fakeCanvas, resetHarness, step } from "../shared/testHarness";
 import type { ArcadeEngine } from "../shared/types";
+import { DIFFICULTY } from "./constants";
 import { connect4Definition } from "./definition";
 
 const SHELL_CALLS = [
@@ -71,12 +72,63 @@ describe("connect 4 definition", () => {
 
   it("renders its HUD", () => {
     const markup = renderToStaticMarkup(
-      <>{connect4Definition.renderHud({ turn: "you", wins: 2, losses: 1, draws: 0 })}</>,
+      <>{connect4Definition.renderHud({ turn: "you", difficulty: "hard", wins: 2, losses: 1, draws: 0 })}</>,
     );
     assert.ok(markup.includes("YOUR TURN"));
+    assert.ok(markup.includes("HARD"), "the chosen difficulty should be visible while playing");
     assert.ok(markup.includes("W2"));
     assert.ok(markup.includes("L1"));
     assert.ok(markup.includes("D0"));
+  });
+
+  it("offers a difficulty choice and applies it", () => {
+    engine.start();
+    step(1);
+    const game = engine as unknown as {
+      difficulty: string;
+      setDifficulty(level: string): void;
+    };
+    assert.equal(game.difficulty, "medium", "medium is the default");
+
+    game.setDifficulty("hard");
+    assert.equal(game.difficulty, "hard");
+
+    // Junk is ignored rather than stored.
+    game.setDifficulty("impossible");
+    assert.equal(game.difficulty, "hard");
+  });
+
+  it("renders the difficulty picker in the start panel", () => {
+    const render = connect4Definition.renderSettings;
+    assert.ok(render, "Connect 4 should expose a difficulty control");
+
+    engine.start();
+    step(1);
+    const markup = renderToStaticMarkup(
+      <>{render({ engine: engine as never })}</>,
+    );
+
+    for (const label of ["Easy", "Medium", "Hard"]) {
+      assert.ok(markup.includes(`>${label}<`), `missing option: ${label}`);
+    }
+    // Exactly one option is marked as the current choice.
+    assert.equal((markup.match(/aria-pressed="true"/g) ?? []).length, 1);
+    assert.ok(markup.includes("Medium"));
+  });
+
+  it("has progressively stronger presets", () => {
+    // A guard on the data itself: a difficulty that searches no deeper than the
+    // one below it would be a silent no-op for the player.
+    assert.ok(DIFFICULTY.easy.depth < DIFFICULTY.medium.depth);
+    assert.ok(DIFFICULTY.medium.depth < DIFFICULTY.hard.depth);
+    assert.ok(DIFFICULTY.easy.budget < DIFFICULTY.hard.budget);
+    assert.equal(DIFFICULTY.hard.random, 0, "hard should never move at random");
+  });
+
+  it("renders nothing before the engine exists", () => {
+    const render = connect4Definition.renderSettings;
+    assert.ok(render);
+    assert.equal(renderToStaticMarkup(<>{render({ engine: null })}</>), "");
   });
 
   it("renders intro instructions", () => {

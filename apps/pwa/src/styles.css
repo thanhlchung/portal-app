@@ -868,6 +868,52 @@ body {
   opacity: 0.75;
 }
 
+/* ---------- difficulty picker (start panel) ---------- */
+
+.difficulty {
+  margin: 0 0 6px;
+}
+
+.difficulty-options {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: rgb(124 245 193 / 0.06);
+  border: 1px solid rgb(124 245 193 / 0.18);
+}
+
+.difficulty-option {
+  flex: 1;
+  min-height: 40px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: rgb(214 245 227 / 0.75);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.difficulty-option:active {
+  transform: scale(0.97);
+}
+
+.difficulty-option.is-active {
+  background: #7cf5c1;
+  color: #06231a;
+}
+
+.difficulty-note {
+  min-height: 1.4em;
+  margin: 6px 0 12px;
+  font-size: 12px;
+  color: rgb(214 245 227 / 0.6);
+}
+
 /* ---------- overlays ---------- */
 
 .play-overlay {

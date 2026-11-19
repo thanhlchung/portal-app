@@ -24,6 +24,7 @@ interface Internals {
   falling: unknown;
   invalidColumn: number;
   difficulty: string;
+  setDifficulty(level: string): void;
   chooseAiColumn(): number;
   playHumanMove(col: number): void;
   finish(outcome: "win" | "loss" | "draw"): void;
@@ -75,7 +76,13 @@ describe("connect 4 engine", () => {
     assert.equal(internals.board[0]?.length, COLS);
     assert.equal(internals.board.flat().filter(Boolean).length, 0);
     assert.equal(internals.current, 1);
-    assert.deepEqual(game.hud, { turn: "you", wins: 0, losses: 0, draws: 0 });
+    assert.deepEqual(game.hud, {
+      turn: "you",
+      difficulty: "medium",
+      wins: 0,
+      losses: 0,
+      draws: 0,
+    });
   });
 
   it("drops a tapped disc to the bottom of that column", () => {
@@ -183,7 +190,7 @@ describe("connect 4 engine", () => {
     game.start();
     const internals = internalsOf(game);
     // Easy keeps the search tiny; this test is about the turn plumbing, not chess.
-    internals.difficulty = "easy";
+    game.setDifficulty("easy");
 
     const point = pointFor(game, 3);
     game.pointerAt(point.x, point.y);
@@ -199,7 +206,7 @@ describe("connect 4 engine", () => {
   it("does not move while paused, and resumes the computer's turn", () => {
     game.start();
     const internals = internalsOf(game);
-    internals.difficulty = "easy";
+    game.setDifficulty("easy");
 
     const point = pointFor(game, 0);
     game.pointerAt(point.x, point.y);

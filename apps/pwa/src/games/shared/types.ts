@@ -105,11 +105,24 @@ export interface IntroContext {
   personalBest: number | null;
 }
 
-export interface ArcadeDefinition<Hud, Result> {
+/**
+ * What a game's settings UI is handed: the engine it is configuring.
+ *
+ * `null` only during the first paint, before the shell has built the engine.
+ */
+export interface SettingsContext<Engine extends ArcadeEngine> {
+  engine: Engine | null;
+}
+
+export interface ArcadeDefinition<
+  Hud,
+  Result,
+  Engine extends ArcadeEngine = ArcadeEngine,
+> {
   /** Rendered along the bottom while playing. Empty means "keyboard only". */
   controls: readonly ControlSpec[];
   /** Factory, not a class: the shell owns the canvas and the lifecycle. */
-  createEngine(canvas: HTMLCanvasElement, events: ArcadeEvents<Hud, Result>): ArcadeEngine;
+  createEngine(canvas: HTMLCanvasElement, events: ArcadeEvents<Hud, Result>): Engine;
   /** The playing HUD (score, lives, level…). Rendered only while a run exists. */
   renderHud(hud: Hud): ReactNode;
   /** Optional instructions for the start panel; the shell adds the buttons. */
@@ -123,6 +136,12 @@ export interface ArcadeDefinition<Hud, Result> {
    * shell hands it — the wiring stays the shell's, only the arrangement moves.
    */
   renderControls?(bind: (name: string) => ControlHandlers): ReactNode;
+  /**
+   * Optional settings for the start panel — a difficulty picker, say. Rendered
+   * above the Launch button and re-renderable on its own, so a game can keep its
+   * own choice in state without restarting the engine.
+   */
+  renderSettings?(context: SettingsContext<Engine>): ReactNode;
   /** Map a finished run onto the report the API accepts for this game's kind. */
   submission(result: Result): RunOutcome;
 }

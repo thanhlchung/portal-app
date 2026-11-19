@@ -326,7 +326,7 @@ export class Connect4Game {
 
   private aiPending = false;
   private time = 0;
-  private difficulty: Difficulty = "medium";
+  private difficultyPreset: Difficulty = "medium";
 
   private raf = 0;
   private lastFrame = 0;
@@ -368,7 +368,25 @@ export class Connect4Game {
 
   get hud(): HudState {
     const turn = this.phase === "over" ? "over" : this.current === YOU ? "you" : "computer";
-    return { turn, wins: this.wins, losses: this.losses, draws: this.draws };
+    return {
+      turn,
+      difficulty: this.difficultyPreset,
+      wins: this.wins,
+      losses: this.losses,
+      draws: this.draws,
+    };
+  }
+
+  get difficulty(): Difficulty {
+    return this.difficultyPreset;
+  }
+
+  /** How hard the computer plays. Applies to the next move it makes. */
+  setDifficulty(difficulty: Difficulty): void {
+    if (!Object.prototype.hasOwnProperty.call(DIFFICULTY, difficulty)) return;
+    if (this.difficultyPreset === difficulty) return;
+    this.difficultyPreset = difficulty;
+    this.emitHud();
   }
 
   start(): void {
@@ -671,7 +689,7 @@ export class Connect4Game {
       if (wins) return col;
     }
 
-    const preset = DIFFICULTY[this.difficulty];
+    const preset = DIFFICULTY[this.difficultyPreset];
     if (preset.random > 0 && Math.random() < preset.random) {
       return columns[Math.floor(Math.random() * columns.length)] ?? columns[0] ?? -1;
     }

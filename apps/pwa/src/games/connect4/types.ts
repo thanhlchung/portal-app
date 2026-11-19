@@ -1,4 +1,5 @@
 import type { ArcadeEvents, GamePhase } from "../shared/types";
+import type { Difficulty } from "./constants";
 
 /**
  * Connect 4's side of the engine contract.
@@ -19,6 +20,7 @@ export interface VersusResult {
 
 export interface HudState {
   turn: "you" | "computer" | "over";
+  difficulty: Difficulty;
   wins: number;
   losses: number;
   draws: number;

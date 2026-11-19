@@ -19,8 +19,9 @@
 // Bumped whenever the shell changes: a new worker purges the old caches, so a
 // returning user cannot be left on a shell that predates a screen's existence
 // (/play and /scores arrived with v3; the /play/<slug> hub with v4; Space
-// Invaders with v5; Tetris with v6; Connect 4 and match records with v7).
-const VERSION = "v7";
+// Invaders with v5; Tetris with v6; Connect 4 and match records with v7;
+// its difficulty picker with v8).
+const VERSION = "v8";
 const SHELL_CACHE = `portal-shell-${VERSION}`;
 const ASSET_CACHE = `portal-assets-${VERSION}`;
 
