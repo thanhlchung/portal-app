@@ -64,26 +64,52 @@ export default function GamesLauncher() {
                 </div>
 
                 <dl className="game-card-stats">
-                  <div>
-                    <dt>Your best</dt>
-                    <dd>
-                      {hubQuery.isPending
-                        ? "…"
-                        : summary?.you
-                          ? `${formatScore(summary.you.score)} · #${summary.you.rank}`
-                          : "—"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Top score</dt>
-                    <dd>
-                      {hubQuery.isPending
-                        ? "…"
-                        : summary?.top
-                          ? `${formatScore(summary.top.score)} · ${summary.top.playerName}`
-                          : "—"}
-                    </dd>
-                  </div>
+                  {hubQuery.isPending ? (
+                    <>
+                      <div>
+                        <dt>Your standing</dt>
+                        <dd>…</dd>
+                      </div>
+                    </>
+                  ) : summary?.kind === "versus" ? (
+                    <>
+                      <div>
+                        <dt>Your record</dt>
+                        <dd>
+                          {summary.you
+                            ? `${summary.you.wins}W · ${summary.you.losses}L · ${summary.you.draws}D`
+                            : "—"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Most wins</dt>
+                        <dd>
+                          {summary.top
+                            ? `${summary.top.wins} · ${summary.top.playerName}`
+                            : "—"}
+                        </dd>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <dt>Your best</dt>
+                        <dd>
+                          {summary?.kind === "score" && summary.you
+                            ? `${formatScore(summary.you.score)} · #${summary.you.rank}`
+                            : "—"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Top score</dt>
+                        <dd>
+                          {summary?.kind === "score" && summary.top
+                            ? `${formatScore(summary.top.score)} · ${summary.top.playerName}`
+                            : "—"}
+                        </dd>
+                      </div>
+                    </>
+                  )}
                 </dl>
 
                 <div className="game-card-actions">
@@ -100,7 +126,7 @@ export default function GamesLauncher() {
         </ul>
 
         <p className="board-note">
-          One board per game — your Asteroids score never appears next to a Tetris one.
+          One board per game — and a match result is not a score.
         </p>
       </main>
     </div>

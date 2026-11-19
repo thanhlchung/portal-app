@@ -1,3 +1,4 @@
+import type { MatchOutcome } from "@portal/api";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 
 /**
@@ -27,6 +28,18 @@ export interface GameResult {
 
 export type ScoreSubmission = GameResult;
 
+/**
+ * What a finished run reports, and therefore how the shell persists it.
+ *
+ * Score games produce a number to rank high-to-low. Versus games produce a
+ * winner, and inventing a score for them (a "win = 1 point" board) would answer
+ * a different question than the one players ask. The union keeps that decision
+ * in the game's definition, where the rules live.
+ */
+export type RunOutcome =
+  | ({ kind: "score" } & ScoreSubmission)
+  | { kind: "outcome"; outcome: MatchOutcome };
+
 export interface ArcadeEvents<Hud, Result> {
   onHud?: (hud: Hud) => void;
   onPhaseChange?: (phase: GamePhase) => void;
@@ -51,6 +64,15 @@ export interface ArcadeEngine {
   setInput(name: string, down: boolean): void;
   toggleMute(): void;
   destroy(): void;
+  /**
+   * Optional: act on a tap on the canvas itself, in CSS pixels relative to the
+   * canvas. Returns true when the game consumed it.
+   *
+   * A board game is played by touching the board, not by pressing a direction
+   * pad — this is what lets the shell hand the tap over instead of treating it
+   * as "start or resume".
+   */
+  pointerAt?(x: number, y: number): boolean;
 }
 
 export interface ControlSpec {
@@ -101,6 +123,6 @@ export interface ArcadeDefinition<Hud, Result> {
    * shell hands it — the wiring stays the shell's, only the arrangement moves.
    */
   renderControls?(bind: (name: string) => ControlHandlers): ReactNode;
-  /** Map this game's result onto the two columns the API stores. */
-  submission(result: Result): ScoreSubmission;
+  /** Map a finished run onto the report the API accepts for this game's kind. */
+  submission(result: Result): RunOutcome;
 }

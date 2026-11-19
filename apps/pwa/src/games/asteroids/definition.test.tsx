@@ -92,8 +92,9 @@ describe("asteroids definition", () => {
     assert.deepEqual(phases, ["playing", "paused", "playing"]);
   });
 
-  it("maps a finished run onto the two columns the API stores", () => {
+  it("maps a finished run onto the score report the API accepts", () => {
     assert.deepEqual(asteroidsDefinition.submission({ score: 4210, level: 6 }), {
+      kind: "score",
       score: 4210,
       level: 6,
     });

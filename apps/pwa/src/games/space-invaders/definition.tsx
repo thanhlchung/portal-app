@@ -50,5 +50,5 @@ export const spaceInvadersDefinition: ArcadeDefinition<HudState, GameResult> = {
     </dl>
   ),
 
-  submission: (result) => ({ score: result.score, level: result.level }),
+  submission: (result) => ({ kind: "score", score: result.score, level: result.level }),
 };

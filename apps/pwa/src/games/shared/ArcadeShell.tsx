@@ -1,4 +1,4 @@
-import type { LeaderboardEntry } from "@portal/api";
+import type { LeaderboardEntry, VersusRecord } from "@portal/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, unwrap } from "../../lib/api";
@@ -6,15 +6,20 @@ import { authClient } from "../../lib/auth-client";
 import { linkProps } from "../../lib/router";
 import type { GameMeta, SessionUser } from "../registry";
 import { formatScore } from "./format";
-import type { ArcadeDefinition, ControlHandlers, GamePhase } from "./types";
+import type { ArcadeDefinition, ControlHandlers, GamePhase, RunOutcome } from "./types";
 
 /**
  * The arcade shell: everything a game should not have to think about.
  *
  * It owns the canvas and the engine's lifecycle, the HUD frame, the touch
- * controls, the start/paused/game-over overlays, the score-saving panel (query,
- * mutation, rank, nickname, 401 handling) and the links between `/play` and
- * `/play/<slug>/scores`. A game supplies a definition and nothing else.
+ * controls, the start/paused/game-over overlays, the result-saving panel
+ * (query, mutation, rank, nickname, 401 handling) and the links between `/play`
+ * and `/play/<slug>/scores`.
+ *
+ * Two kinds of game share it, and the difference is deliberately narrow: a
+ * **score** game posts a number and is ranked high-to-low; a **versus** game
+ * posts a win/loss/draw and is ranked by wins. The definition says which, in
+ * `submission()`, and the shell branches only on that.
  *
  * The frame loop stays *outside* React: the engine reports events, which set
  * state, which re-renders the shell — but the per-frame work never touches the
@@ -23,19 +28,23 @@ import type { ArcadeDefinition, ControlHandlers, GamePhase } from "./types";
 
 const NICKNAME_KEY = "portal.nickname";
 
-interface SaveResponse {
-  score: LeaderboardEntry;
-  rank: number;
-}
-
-interface SavedState {
-  rank: number;
-  playerName: string;
-}
-
-interface BoardPayload {
+interface ScoreBoard {
+  kind: "score";
   scores: LeaderboardEntry[];
   you: { score: number; rank: number } | null;
+}
+
+interface VersusBoard {
+  kind: "versus";
+  records: VersusRecord[];
+  you: VersusRecord | null;
+}
+
+type BoardPayload = ScoreBoard | VersusBoard;
+
+interface SavedInfo {
+  rank: number;
+  playerName: string;
 }
 
 function defaultNickname(user: SessionUser): string {
@@ -50,6 +59,18 @@ function defaultNickname(user: SessionUser): string {
   const name = user.name.trim();
   if (name) return name;
   return user.email.split("@")[0] ?? "Player";
+}
+
+function outcomeTitle(outcome: "win" | "loss" | "draw"): string {
+  if (outcome === "win") return "YOU WIN";
+  if (outcome === "loss") return "YOU LOSE";
+  return "DRAW";
+}
+
+function outcomeClass(outcome: "win" | "loss" | "draw"): string {
+  if (outcome === "win") return "play-title--win";
+  if (outcome === "loss") return "play-title--over";
+  return "play-title--draw";
 }
 
 export function ArcadeShell<Hud, Result>({
@@ -71,33 +92,60 @@ export function ArcadeShell<Hud, Result>({
   const [muted, setMuted] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [nickname, setNickname] = useState(() => defaultNickname(user));
-  const [saved, setSaved] = useState<SavedState | null>(null);
+  const [saved, setSaved] = useState<SavedInfo | null>(null);
   const toastTimer = useRef<number | null>(null);
 
-  /** This player's best run in this game — shown before and after a run. */
+  /** This player's standing in this game — a best score, or a match record. */
   const boardQuery = useQuery({
     queryKey: ["scores", game.slug],
-    queryFn: async () =>
-      unwrap<BoardPayload>(
-        await api.games[":slug"].scores.$get({ param: { slug: game.slug } }),
-      ),
+    queryFn: async (): Promise<BoardPayload> =>
+      game.kind === "versus"
+        ? unwrap<VersusBoard>(
+            await api.games[":slug"].matches.$get({ param: { slug: game.slug } }),
+          )
+        : unwrap<ScoreBoard>(await api.games[":slug"].scores.$get({ param: { slug: game.slug } })),
   });
-  const personalBest = boardQuery.data?.you?.score ?? null;
 
-  const saveScore = useMutation({
-    mutationFn: async (input: { score: number; level: number; playerName: string }) =>
-      unwrap<SaveResponse>(
-        await api.games[":slug"].scores.$post({ param: { slug: game.slug }, json: input }),
-      ),
+  const board = boardQuery.data;
+  const myScore = board?.kind === "score" ? board.you : null;
+  const myRecord = board?.kind === "versus" ? board.you : null;
+
+  const report = useMutation({
+    mutationFn: async (input: { playerName: string; outcome: RunOutcome }): Promise<SavedInfo> => {
+      if (input.outcome.kind === "score") {
+        const data = await unwrap<{ score: { playerName: string }; rank: number }>(
+          await api.games[":slug"].scores.$post({
+            param: { slug: game.slug },
+            json: {
+              score: input.outcome.score,
+              level: input.outcome.level,
+              playerName: input.playerName,
+            },
+          }),
+        );
+        return { rank: data.rank, playerName: data.score.playerName };
+      }
+
+      const data = await unwrap<{ record: { playerName: string } | null; rank: number | null }>(
+        await api.games[":slug"].matches.$post({
+          param: { slug: game.slug },
+          json: { outcome: input.outcome.outcome, playerName: input.playerName },
+        }),
+      );
+      return {
+        rank: data.rank ?? 0,
+        playerName: data.record?.playerName ?? input.playerName,
+      };
+    },
     onSuccess: (data) => {
-      setSaved({ rank: data.rank, playerName: data.score.playerName });
+      setSaved(data);
       try {
-        window.localStorage.setItem(NICKNAME_KEY, data.score.playerName);
+        window.localStorage.setItem(NICKNAME_KEY, data.playerName);
       } catch {
         // Non-fatal: the nickname just will not be remembered.
       }
-      // Both the board and the hub summary (which shows each game's best) are
-      // stale now.
+      // Both the board and the hub summary (which shows every game's standing)
+      // are stale now.
       void queryClient.invalidateQueries({ queryKey: ["scores"] });
       void queryClient.invalidateQueries({ queryKey: ["games"] });
     },
@@ -106,11 +154,11 @@ export function ArcadeShell<Hud, Result>({
   // An expired session must not leave a finished run unsaveable with a generic
   // "couldn't save" message: sign out, which drops the player on sign-in.
   useEffect(() => {
-    const error = saveScore.error ?? boardQuery.error;
+    const error = report.error ?? boardQuery.error;
     if (error instanceof ApiError && error.status === 401) {
       void authClient.signOut().then(() => queryClient.clear());
     }
-  }, [saveScore.error, boardQuery.error, queryClient]);
+  }, [report.error, boardQuery.error, queryClient]);
 
   // One engine per mount, rebuilt only if the game or its definition changes
   // (both are module constants, so in practice never). Rebuilding it would
@@ -126,7 +174,7 @@ export function ArcadeShell<Hud, Result>({
       onGameOver: (finished) => {
         setResult(finished);
         setSaved(null);
-        saveScore.reset();
+        report.reset();
       },
       onToast: (message) => {
         setToast(message);
@@ -141,16 +189,16 @@ export function ArcadeShell<Hud, Result>({
       gameRef.current = null;
       if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
     };
-    // `saveScore` is a stable mutation object; the engine must not be rebuilt.
+    // `report` is a stable mutation object; the engine must not be rebuilt.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [definition, game.slug]);
 
   const startRun = useCallback(() => {
     setResult(null);
     setSaved(null);
-    saveScore.reset();
+    report.reset();
     gameRef.current?.start();
-  }, [saveScore]);
+  }, [report]);
 
   /** Pointer-down/up on a touch control, with capture so release is reliable. */
   const hold = (name: string): ControlHandlers => ({
@@ -170,13 +218,22 @@ export function ArcadeShell<Hud, Result>({
   });
 
   const playing = phase === "playing";
-  const submission = result === null ? null : definition.submission(result);
+  const outcome = result === null ? null : definition.submission(result);
   // Only claim "personal best" once the board has actually loaded — otherwise a
   // first-time player is told every run is a record.
   const isNewBest =
-    submission !== null &&
+    outcome?.kind === "score" &&
     boardQuery.isSuccess &&
-    (personalBest === null || submission.score > personalBest);
+    (myScore === null || outcome.score > myScore.score);
+
+  const personalLine =
+    myScore !== null
+      ? `Your best: ${formatScore(myScore.score)}`
+      : myRecord !== null
+        ? `Your record: ${myRecord.wins}W · ${myRecord.losses}L · ${myRecord.draws}D`
+        : null;
+
+  const boardLabel = game.kind === "versus" ? "Records" : "High scores";
 
   return (
     <div className="play">
@@ -184,7 +241,15 @@ export function ArcadeShell<Hud, Result>({
         ref={canvasRef}
         className="play-canvas"
         aria-label={`${game.title} playfield`}
-        onPointerDown={() => gameRef.current?.primaryAction()}
+        onPointerDown={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          const x = event.clientX - rect.left;
+          const y = event.clientY - rect.top;
+          // A board game consumes taps on the playfield itself; for the rest,
+          // a tap means "start" or "resume".
+          if (gameRef.current?.pointerAt?.(x, y)) return;
+          gameRef.current?.primaryAction();
+        }}
       />
 
       {phase !== "idle" && hud !== null ? (
@@ -239,9 +304,7 @@ export function ArcadeShell<Hud, Result>({
       ) : null}
 
       {playing && definition.controls.length > 0 && definition.renderControls ? (
-        <div className="play-controls play-controls--custom">
-          {definition.renderControls(hold)}
-        </div>
+        <div className="play-controls play-controls--custom">{definition.renderControls(hold)}</div>
       ) : null}
 
       {playing && definition.controls.length > 0 && !definition.renderControls ? (
@@ -288,20 +351,20 @@ export function ArcadeShell<Hud, Result>({
           <div className="play-panel">
             <h1 className="play-title">{game.title.toUpperCase()}</h1>
             <p className="play-sub">{game.blurb}</p>
-            {definition.renderIntro?.({ personalBest })}
+            {definition.renderIntro?.({ personalBest: myScore?.score ?? null })}
             {definition.controls.length > 0 ? (
               <p className="play-sub play-sub--muted">
                 On a phone, use the buttons along the bottom.
               </p>
-            ) : null}
-            {personalBest !== null ? (
-              <p className="play-best">Your best: {formatScore(personalBest)}</p>
-            ) : null}
+            ) : (
+              <p className="play-sub play-sub--muted">{game.controls} to play.</p>
+            )}
+            {personalLine !== null ? <p className="play-best">{personalLine}</p> : null}
             <button className="button button--primary play-start" type="button" onClick={startRun}>
               Launch
             </button>
             <a className="link-button" {...linkProps(`/play/${game.slug}/scores`)}>
-              High scores
+              {boardLabel}
             </a>
           </div>
         </div>
@@ -333,20 +396,37 @@ export function ArcadeShell<Hud, Result>({
         </div>
       ) : null}
 
-      {phase === "over" && submission ? (
+      {phase === "over" && outcome ? (
         <div className="play-overlay">
           <div className="play-panel">
-            <h2 className="play-title play-title--small play-title--over">GAME OVER</h2>
-            <p className="play-final">
-              <span className="play-final-score">{formatScore(submission.score)}</span>
-              <span className="play-final-meta">LEVEL {submission.level}</span>
-            </p>
-            {isNewBest ? <p className="play-best play-best--new">New personal best</p> : null}
+            {outcome.kind === "score" ? (
+              <>
+                <h2 className="play-title play-title--small play-title--over">GAME OVER</h2>
+                <p className="play-final">
+                  <span className="play-final-score">{formatScore(outcome.score)}</span>
+                  <span className="play-final-meta">LEVEL {outcome.level}</span>
+                </p>
+                {isNewBest ? <p className="play-best play-best--new">New personal best</p> : null}
+              </>
+            ) : (
+              <>
+                <h2 className={`play-title play-title--small ${outcomeClass(outcome.outcome)}`}>
+                  {outcomeTitle(outcome.outcome)}
+                </h2>
+                <p className="play-final">
+                  <span className="play-final-meta">{game.title} · match over</span>
+                </p>
+              </>
+            )}
 
             {saved ? (
               <p className="play-saved" role="status">
-                Saved as <strong>{saved.playerName}</strong> &mdash; rank{" "}
-                <strong>#{saved.rank}</strong>
+                Saved as <strong>{saved.playerName}</strong>
+                {saved.rank > 0 ? (
+                  <>
+                    {" — "}rank <strong>#{saved.rank}</strong>
+                  </>
+                ) : null}
               </p>
             ) : (
               <div className="play-save">
@@ -364,20 +444,18 @@ export function ArcadeShell<Hud, Result>({
                 <button
                   className="button button--primary"
                   type="button"
-                  disabled={!nickname.trim() || saveScore.isPending}
-                  onClick={() =>
-                    saveScore.mutate({
-                      score: submission.score,
-                      level: submission.level,
-                      playerName: nickname.trim(),
-                    })
-                  }
+                  disabled={!nickname.trim() || report.isPending}
+                  onClick={() => report.mutate({ playerName: nickname.trim(), outcome })}
                 >
-                  {saveScore.isPending ? "Saving…" : "Save score"}
+                  {report.isPending
+                    ? "Saving…"
+                    : outcome.kind === "score"
+                      ? "Save score"
+                      : "Save result"}
                 </button>
-                {saveScore.isError ? (
+                {report.isError ? (
                   <p className="form-error" role="alert">
-                    Couldn&apos;t save that run. Check your connection and try again.
+                    Couldn&apos;t save that result. Check your connection and try again.
                   </p>
                 ) : null}
               </div>
@@ -390,7 +468,7 @@ export function ArcadeShell<Hud, Result>({
                 Play again
               </button>
               <a className="link-button" {...linkProps(`/play/${game.slug}/scores`)}>
-                Leaderboard
+                {boardLabel}
               </a>
             </div>
           </div>

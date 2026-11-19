@@ -1,3 +1,4 @@
+import type { GameKind } from "@portal/api";
 import { lazy, type ComponentType, type LazyExoticComponent } from "react";
 import { DEFAULT_GAME, GAME_SLUGS, isGameSlug, type GameSlug } from "./slugs";
 
@@ -27,6 +28,12 @@ export interface GameProps {
 export interface GameMeta {
   /** URL segment and database key. Must be in `GAME_SLUGS`. */
   slug: GameSlug;
+  /**
+   * What a finished run produces. Must match the server's own table
+   * (`apps/api/src/games.ts`): it decides which board is fetched and which
+   * endpoint the result is posted to.
+   */
+  kind: GameKind;
   title: string;
   /** One line for the launcher card. */
   blurb: string;
@@ -38,6 +45,7 @@ export interface GameMeta {
 export const games: readonly GameMeta[] = [
   {
     slug: "asteroids",
+    kind: "score",
     title: "Asteroids",
     blurb: "Rotate, thrust and shoot the rocks before they shoot you.",
     controls: "Arrow keys or the on-screen buttons",
@@ -45,6 +53,7 @@ export const games: readonly GameMeta[] = [
   },
   {
     slug: "space-invaders",
+    kind: "score",
     title: "Space Invaders",
     blurb: "Clear the marching fleet before it reaches the ground — and shoot the UFO for bonus points.",
     controls: "Arrow keys or the on-screen buttons",
@@ -52,10 +61,19 @@ export const games: readonly GameMeta[] = [
   },
   {
     slug: "tetris",
+    kind: "score",
     title: "Tetris",
     blurb: "Stack the falling blocks and clear lines — four at a time if you can.",
     controls: "Arrow keys or the on-screen pad",
     Component: lazy(() => import("./tetris/Game")),
+  },
+  {
+    slug: "connect4",
+    kind: "versus",
+    title: "Connect 4",
+    blurb: "Four in a row beats the computer. It blocks you, so plan two moves ahead.",
+    controls: "Tap a column",
+    Component: lazy(() => import("./connect4/Game")),
   },
 ];
 

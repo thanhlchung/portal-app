@@ -1,18 +1,18 @@
 import { zValidator } from "@hono/zod-validator";
-import { and, asc, count, desc, eq, gt, lt, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, lt, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AuthUser } from "../auth.js";
 import { getDb, schema } from "../db/index.js";
-import { DEFAULT_GAME, GAME_SLUGS, isGameSlug, type GameSlug } from "../games.js";
+import { DEFAULT_GAME, GAME_SLUGS, gameKind, isGameSlug, type GameSlug } from "../games.js";
 import type { AppEnv } from "../types.js";
 
-/** How many rows a leaderboard returns. */
+/** How many rows a board returns. */
 export const LEADERBOARD_SIZE = 20;
 
 /**
- * Bounds, not hints. A browser game cannot prove its own score, so these are
- * the limits of what the table will accept: a score large enough to be
+ * Bounds, not hints. A browser game cannot prove its own result, so these are
+ * the limits of what the tables will accept: a score large enough to be
  * impossible in the time a run can plausibly last, or a level beyond what a
  * difficulty curve allows, is rejected rather than stored.
  */
@@ -37,18 +37,34 @@ export interface YourBest {
   rank: number;
 }
 
-/** One launcher card: the game, its best run, and where the caller stands. */
-export interface GameSummary {
-  slug: GameSlug;
-  top: LeaderboardEntry | null;
-  you: YourBest | null;
+export type MatchOutcome = "win" | "loss" | "draw";
+
+/** One player's record in a versus game, aggregated over every match. */
+export interface VersusRecord {
+  playerName: string;
+  wins: number;
+  losses: number;
+  draws: number;
+  played: number;
+  rank: number;
+  isYou: boolean;
 }
+
+/** A launcher card. The shape follows the game's kind, so a card cannot be read wrong. */
+export type GameSummary =
+  | { slug: GameSlug; kind: "score"; top: LeaderboardEntry | null; you: YourBest | null }
+  | { slug: GameSlug; kind: "versus"; top: VersusRecord | null; you: VersusRecord | null };
 
 export const submitScoreBody = z.object({
   score: z.number().int().min(0).max(MAX_SCORE),
   level: z.number().int().min(1).max(MAX_LEVEL),
   // Optional: the panel offers the account name as a default, but a player may
   // enter initials the way the arcade original did.
+  playerName: z.string().trim().min(1).max(MAX_NAME).optional(),
+});
+
+export const submitMatchBody = z.object({
+  outcome: z.enum(["win", "loss", "draw"]),
   playerName: z.string().trim().min(1).max(MAX_NAME).optional(),
 });
 
@@ -154,6 +170,7 @@ async function readBoard(user: AuthUser, game: GameSlug) {
 
   return {
     game,
+    kind: "score" as const,
     scores: rows.map((row) => toEntry(row, user.id)),
     you,
   };
@@ -184,6 +201,7 @@ async function writeScore(
   // about runs recorded since it last loaded the board.
   return {
     game,
+    kind: "score" as const,
     score: toEntry(
       {
         id: row.id,
@@ -200,61 +218,141 @@ async function writeScore(
 }
 
 /**
+ * Wins first, then draws, then fewest losses, then name — so a record is
+ * orderable and a tie never depends on row order.
+ */
+function compareRecords(
+  a: { playerName: string; wins: number; losses: number; draws: number },
+  b: { playerName: string; wins: number; losses: number; draws: number },
+): number {
+  if (b.wins !== a.wins) return b.wins - a.wins;
+  if (b.draws !== a.draws) return b.draws - a.draws;
+  if (a.losses !== b.losses) return a.losses - b.losses;
+  return a.playerName.localeCompare(b.playerName);
+}
+
+interface AggregateRow {
+  userId: string;
+  playerName: string;
+  wins: number;
+  losses: number;
+  draws: number;
+}
+
+function toRecord(row: AggregateRow & { rank: number }, viewerId: string): VersusRecord {
+  return {
+    playerName: row.playerName,
+    wins: row.wins,
+    losses: row.losses,
+    draws: row.draws,
+    played: row.wins + row.losses + row.draws,
+    rank: row.rank,
+    isYou: row.userId === viewerId,
+  };
+}
+
+/**
+ * Every player's record in a versus game, ordered.
+ *
+ * The aggregation happens in SQL and the ordering in memory: the result is one
+ * row per player who has ever finished a match, which is a small set by
+ * construction. Ordering in SQL would need a window function to rank tie-broken
+ * records, and that is more machinery than this board earns today.
+ */
+async function readRecords(user: AuthUser, game: GameSlug) {
+  const db = await getDb();
+
+  const rows = await db
+    .select({
+      userId: schema.gameMatch.userId,
+      playerName: sql<string>`max(${schema.gameMatch.playerName})`,
+      wins: sql<number>`(count(*) filter (where ${schema.gameMatch.outcome} = 'win'))::int`,
+      losses: sql<number>`(count(*) filter (where ${schema.gameMatch.outcome} = 'loss'))::int`,
+      draws: sql<number>`(count(*) filter (where ${schema.gameMatch.outcome} = 'draw'))::int`,
+    })
+    .from(schema.gameMatch)
+    .where(eq(schema.gameMatch.game, game))
+    .groupBy(schema.gameMatch.userId);
+
+  const ordered = rows
+    .map((row) => ({
+      userId: row.userId,
+      playerName: row.playerName,
+      wins: row.wins,
+      losses: row.losses,
+      draws: row.draws,
+    }))
+    .sort(compareRecords)
+    .map((row, index) => ({ ...row, rank: index + 1 }));
+
+  const mine = ordered.find((row) => row.userId === user.id);
+  const you: VersusRecord | null = mine ? toRecord(mine, user.id) : null;
+
+  return {
+    game,
+    kind: "versus" as const,
+    records: ordered.slice(0, LEADERBOARD_SIZE).map((row) => toRecord(row, user.id)),
+    you,
+  };
+}
+
+async function writeMatch(
+  user: AuthUser,
+  game: GameSlug,
+  input: { outcome: MatchOutcome; playerName?: string | undefined },
+) {
+  const db = await getDb();
+  const playerName = input.playerName?.trim() || defaultPlayerName(user);
+
+  const [row] = await db
+    .insert(schema.gameMatch)
+    .values({ game, userId: user.id, playerName, outcome: input.outcome })
+    .returning();
+
+  if (!row) return null;
+
+  // Re-read rather than computing the record here: the aggregate is the truth,
+  // and it makes the response identical to what the board will show.
+  const board = await readRecords(user, game);
+  return { game, kind: "versus" as const, record: board.you, rank: board.you?.rank ?? null };
+}
+
+/**
  * Per-game routes, mounted at `/api/games`:
  *
  *   GET  /api/games                    launcher cards (one per game)
- *   GET  /api/games/<slug>/scores      that game's board + your best
- *   POST /api/games/<slug>/scores      save a run, returns its rank
+ *   GET  /api/games/<slug>/scores      that game's board + your best   (score games)
+ *   POST /api/games/<slug>/scores      save a run, returns its rank    (score games)
+ *   GET  /api/games/<slug>/matches     records board + your record     (versus games)
+ *   POST /api/games/<slug>/matches     record a match, returns your rank (versus games)
  *
  * The slug is validated against the server's own allowlist so an unknown value
- * is a 404 rather than a brand-new empty board.
+ * is a 404 rather than a brand-new empty board, and a route is refused when it
+ * does not match the game's kind — a Connect 4 score would be meaningless.
  */
 export const gamesRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
     const user = c.get("user");
-    const db = await getDb();
-
-    // Three indexed queries per game — the whole list is four games today, and
-    // the launcher is one page. Worth revisiting (a window function, or a
-    // materialised summary) only if the catalogue gets large.
     const summaries: GameSummary[] = [];
+
     for (const slug of GAME_SLUGS) {
-      const [top] = await db
-        .select({
-          id: schema.score.id,
-          userId: schema.score.userId,
-          playerName: schema.score.playerName,
-          score: schema.score.score,
-          level: schema.score.level,
-          createdAt: schema.score.createdAt,
-        })
-        .from(schema.score)
-        .where(eq(schema.score.game, slug))
-        .orderBy(desc(schema.score.score), asc(schema.score.createdAt))
-        .limit(1);
+      if (gameKind(slug) === "versus") {
+        const board = await readRecords(user, slug);
+        summaries.push({
+          slug,
+          kind: "versus",
+          top: board.records[0] ?? null,
+          you: board.you,
+        });
+        continue;
+      }
 
-      const [best] = await db
-        .select({
-          score: schema.score.score,
-          level: schema.score.level,
-          createdAt: schema.score.createdAt,
-        })
-        .from(schema.score)
-        .where(and(eq(schema.score.game, slug), eq(schema.score.userId, user.id)))
-        .orderBy(desc(schema.score.score), asc(schema.score.createdAt))
-        .limit(1);
-
+      const board = await readBoard(user, slug);
       summaries.push({
         slug,
-        top: top ? toEntry(top, user.id) : null,
-        you: best
-          ? {
-              score: best.score,
-              level: best.level,
-              createdAt: best.createdAt.toISOString(),
-              rank: await rankOf(db, slug, best),
-            }
-          : null,
+        kind: "score",
+        top: board.scores[0] ?? null,
+        you: board.you,
       });
     }
 
@@ -264,14 +362,33 @@ export const gamesRoutes = new Hono<AppEnv>()
   .get("/:slug/scores", async (c) => {
     const slug = c.req.param("slug");
     if (!isGameSlug(slug)) return c.json({ error: "unknown_game" }, 404);
+    if (gameKind(slug) !== "score") return c.json({ error: "wrong_game_kind" }, 400);
     return c.json(await readBoard(c.get("user"), slug));
   })
 
   .post("/:slug/scores", json(submitScoreBody), async (c) => {
     const slug = c.req.param("slug");
     if (!isGameSlug(slug)) return c.json({ error: "unknown_game" }, 404);
+    if (gameKind(slug) !== "score") return c.json({ error: "wrong_game_kind" }, 400);
 
     const result = await writeScore(c.get("user"), slug, c.req.valid("json"));
+    if (!result) return c.json({ error: "not_saved" }, 500);
+    return c.json(result, 201);
+  })
+
+  .get("/:slug/matches", async (c) => {
+    const slug = c.req.param("slug");
+    if (!isGameSlug(slug)) return c.json({ error: "unknown_game" }, 404);
+    if (gameKind(slug) !== "versus") return c.json({ error: "wrong_game_kind" }, 400);
+    return c.json(await readRecords(c.get("user"), slug));
+  })
+
+  .post("/:slug/matches", json(submitMatchBody), async (c) => {
+    const slug = c.req.param("slug");
+    if (!isGameSlug(slug)) return c.json({ error: "unknown_game" }, 404);
+    if (gameKind(slug) !== "versus") return c.json({ error: "wrong_game_kind" }, 400);
+
+    const result = await writeMatch(c.get("user"), slug, c.req.valid("json"));
     if (!result) return c.json({ error: "not_saved" }, 500);
     return c.json(result, 201);
   });

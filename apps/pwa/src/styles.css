@@ -909,6 +909,15 @@ body {
   font-size: clamp(20px, 7vw, 30px);
 }
 
+.play-title--win {
+  color: #7cf5c1;
+  text-shadow: 0 0 18px rgb(124 245 193 / 0.5);
+}
+
+.play-title--draw {
+  color: #eafcff;
+}
+
 .play-title--over {
   color: #ffb3b3;
   text-shadow: 0 0 18px rgb(255 120 120 / 0.5);
@@ -1266,6 +1275,25 @@ body {
   .score-points {
     font-size: 15px;
   }
+}
+
+/* ---------- records board (versus games) ---------- */
+
+.score-row--records {
+  grid-template-columns: 28px minmax(0, 1fr) auto auto auto;
+}
+
+.score-wld {
+  min-width: 26px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.score-wld strong {
+  color: var(--text);
 }
 
 /* ---------- games hub ---------- */

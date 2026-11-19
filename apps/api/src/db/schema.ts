@@ -164,11 +164,44 @@ export const score = pgTable(
   ],
 );
 
+/**
+ * One row per finished *match* of a versus game (Connect 4).
+ *
+ * A separate table rather than a nullable `outcome` column on `score` on
+ * purpose: a run's score and a match's winner are different facts, and mixing
+ * them would mean every score query carrying a `kind` filter and every reader
+ * wondering whether `score` is points or a win flag.
+ *
+ * `outcome` is the **human player's** result — `win` / `loss` / `draw` — so the
+ * board answers "how good is this player?" rather than "who won that game?".
+ */
+export const gameMatch = pgTable(
+  "game_match",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    game: text("game").notNull(),
+    userId: text("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    playerName: text("playerName").notNull(),
+    outcome: text("outcome").notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    // The board aggregates per player: win/loss/draw counts grouped by user.
+    index("game_match_game_user_idx").on(table.game, table.userId),
+    index("game_match_game_createdAt_idx").on(table.game, table.createdAt),
+  ],
+);
+
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
   notes: many(note),
   scores: many(score),
+  matches: many(gameMatch),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -187,6 +220,10 @@ export const scoreRelations = relations(score, ({ one }) => ({
   user: one(user, { fields: [score.userId], references: [user.id] }),
 }));
 
+export const gameMatchRelations = relations(gameMatch, ({ one }) => ({
+  user: one(user, { fields: [gameMatch.userId], references: [user.id] }),
+}));
+
 export const schema = {
   user,
   session,
@@ -194,9 +231,11 @@ export const schema = {
   verification,
   note,
   score,
+  gameMatch,
   userRelations,
   sessionRelations,
   accountRelations,
   noteRelations,
   scoreRelations,
+  gameMatchRelations,
 };

@@ -59,8 +59,8 @@ grow:
 | --- | --- |
 | `/` | Notes (the portal's original screen) |
 | `/play` | Games hub — one card per game, with your best and the top score |
-| `/play/<slug>` | That game: `asteroids`, `space-invaders`, `tetris` |
-| `/play/<slug>/scores` | That game's board — top 20 plus your own best and rank |
+| `/play/<slug>` | That game: `asteroids`, `space-invaders`, `tetris`, `connect4` |
+| `/play/<slug>/scores` | That game's board — top 20 runs, or match records for a versus game |
 | `/scores` | Legacy alias → the default game's board (bookmarks, cached shells) |
 
 Each game is its own lazy chunk (`React.lazy` via the registry), so opening one never downloads
@@ -95,12 +95,20 @@ the two together in three lines. Engines know nothing about React — they repor
 game-over events through callbacks, and the shell draws the HUD, menus and game-over panel. That
 split is what keeps 60 fps out of the component tree.
 
-A finished run is saved with a nickname, and each board is server-side and per game:
+A finished run is saved with a nickname, and each board is server-side and per game. There are
+two kinds of result, and they do not share a table or a route:
 
 ```
-GET  /api/games                  → { games: [{ slug, top, you }] }   the hub, one card per game
-GET  /api/games/<slug>/scores    → { game, scores: [{ id, playerName, score, level, createdAt, isYou }], you: { score, level, createdAt, rank } | null }
-POST /api/games/<slug>/scores    → { game, score: { …entry }, rank }   body: { score, level, playerName? }
+GET  /api/games                  → { games: [{ slug, kind, top, you }] }   the hub, one card per game
+
+score games (asteroids, space-invaders, tetris)
+GET  /api/games/<slug>/scores    → { game, kind: "score", scores: [{ id, playerName, score, level, createdAt, isYou }], you: { score, level, createdAt, rank } | null }
+POST /api/games/<slug>/scores    → { game, score: { …entry }, rank }        body: { score, level, playerName? }
+
+versus games (connect4) — a match produces a winner, not a score
+GET  /api/games/<slug>/matches   → { game, kind: "versus", records: [{ playerName, wins, losses, draws, played, rank, isYou }], you: … | null }
+POST /api/games/<slug>/matches   → { game, record, rank }                    body: { outcome: "win" | "loss" | "draw", playerName? }
+
 GET  /api/scores · POST /api/scores   alias for the default game (asteroids)
 ```
 

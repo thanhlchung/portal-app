@@ -65,8 +65,9 @@ describe("space invaders definition", () => {
     }
   });
 
-  it("maps a finished run onto the two columns the API stores", () => {
+  it("maps a finished run onto the score report the API accepts", () => {
     assert.deepEqual(spaceInvadersDefinition.submission({ score: 1230, level: 4 }), {
+      kind: "score",
       score: 1230,
       level: 4,
     });

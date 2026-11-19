@@ -522,8 +522,9 @@ describe("per-game boards", () => {
     const { games } = (await response.json()) as {
       games: {
         slug: string;
-        top: { score: number; playerName: string } | null;
-        you: { score: number; rank: number } | null;
+        kind: "score" | "versus";
+        top: { score?: number; playerName: string } | null;
+        you: { score?: number; rank: number } | null;
       }[];
     };
 
@@ -534,15 +535,16 @@ describe("per-game boards", () => {
     );
 
     const tetris = games.find((game) => game.slug === "tetris");
+    assert.equal(tetris?.kind, "score");
     assert.equal(tetris?.top?.score, 4242);
     assert.equal(tetris?.top?.playerName, "HUB");
     assert.equal(tetris?.you?.score, 4242);
     assert.equal(tetris?.you?.rank, 1);
 
     // A game nobody has played still gets a card, with empty slots rather than
-    // being omitted.
+    // being omitted — and a versus game reports its kind, not a fake score.
     const connect4 = games.find((game) => game.slug === "connect4");
-    assert.deepEqual(connect4, { slug: "connect4", top: null, you: null });
+    assert.deepEqual(connect4, { slug: "connect4", kind: "versus", top: null, you: null });
   });
 
   it("accepts a board for every game the client can play", () => {
@@ -555,5 +557,190 @@ describe("per-game boards", () => {
         `the server has no board for client game "${slug}"`,
       );
     }
+  });
+});
+
+interface VersusBoardBody {
+  game: string;
+  kind: "versus";
+  records: {
+    playerName: string;
+    wins: number;
+    losses: number;
+    draws: number;
+    played: number;
+    rank: number;
+    isYou: boolean;
+  }[];
+  you: VersusBoardBody["records"][number] | null;
+}
+
+async function versusBoard(cookie: string, slug: string): Promise<VersusBoardBody> {
+  const response = await request(`/api/games/${slug}/matches`, { cookie });
+  assert.equal(response.status, 200, `expected a records board for ${slug}`);
+  return (await response.json()) as VersusBoardBody;
+}
+
+/**
+ * A versus game is a different kind of result, not a score with extra steps:
+ * the board aggregates wins/losses/draws per player and ranks by wins. These
+ * tests pin the aggregation, the ordering, and the fact that the two kinds
+ * refuse each other's routes.
+ */
+describe("versus boards", () => {
+  it("requires a session", async () => {
+    assert.equal((await request("/api/games/connect4/matches")).status, 401);
+    assert.equal(
+      (await request("/api/games/connect4/matches", { method: "POST", body: { outcome: "win" } }))
+        .status,
+      401,
+    );
+  });
+
+  it("records a match and returns the caller's record", async () => {
+    const cookie = await signIn("c4-first@example.com");
+    const response = await request("/api/games/connect4/matches", {
+      method: "POST",
+      body: { outcome: "win", playerName: "RED" },
+      cookie,
+    });
+    assert.equal(response.status, 201);
+    const body = (await response.json()) as {
+      game: string;
+      kind: string;
+      record: { wins: number; losses: number; draws: number; played: number; rank: number };
+      rank: number;
+    };
+    assert.equal(body.game, "connect4");
+    assert.equal(body.kind, "versus");
+    assert.equal(body.record.wins, 1);
+    assert.equal(body.record.losses, 0);
+    assert.equal(body.record.played, 1);
+    assert.equal(body.rank, 1);
+  });
+
+  it("aggregates every outcome into one record per player", async () => {
+    const cookie = await signIn("c4-agg@example.com");
+    for (const outcome of ["win", "win", "loss", "draw"]) {
+      const response = await request("/api/games/connect4/matches", {
+        method: "POST",
+        body: { outcome, playerName: "AGG" },
+        cookie,
+      });
+      assert.equal(response.status, 201);
+    }
+
+    const { records, you } = await versusBoard(cookie, "connect4");
+    const mine = records.find((record) => record.playerName === "AGG");
+    assert.ok(mine, "the player should be on the board");
+    assert.equal(mine.wins, 2);
+    assert.equal(mine.losses, 1);
+    assert.equal(mine.draws, 1);
+    assert.equal(mine.played, 4);
+    assert.equal(you?.wins, 2);
+    assert.equal(you?.played, 4);
+  });
+
+  it("ranks by wins, with a stable tie-break", async () => {
+    const leader = await signIn("c4-leader@example.com");
+    for (let i = 0; i < 3; i += 1) {
+      await request("/api/games/connect4/matches", {
+        method: "POST",
+        body: { outcome: "win", playerName: "LEADER" },
+        cookie: leader,
+      });
+    }
+    const trailer = await signIn("c4-trailer@example.com");
+    await request("/api/games/connect4/matches", {
+      method: "POST",
+      body: { outcome: "win", playerName: "TRAILER" },
+      cookie: trailer,
+    });
+
+    const { records, you } = await versusBoard(trailer, "connect4");
+    const leaderRow = records.find((record) => record.playerName === "LEADER");
+    const trailerRow = records.find((record) => record.playerName === "TRAILER");
+    assert.ok(leaderRow && trailerRow);
+    assert.ok(
+      leaderRow.rank < trailerRow.rank,
+      "more wins must rank higher: " + JSON.stringify(records.map((r) => [r.playerName, r.rank])),
+    );
+    assert.equal(trailerRow.isYou, true);
+    assert.equal(leaderRow.isYou, false);
+    assert.equal(you?.rank, trailerRow.rank);
+  });
+
+  it("rejects a result it cannot store", async () => {
+    const cookie = await signIn("c4-bad@example.com");
+    for (const body of [
+      { outcome: "victory" },
+      { outcome: "" },
+      { outcome: "win", playerName: "x".repeat(25) },
+    ]) {
+      const response = await request("/api/games/connect4/matches", {
+        method: "POST",
+        body,
+        cookie,
+      });
+      assert.equal(response.status, 400, `expected 400 for ${JSON.stringify(body)}`);
+    }
+  });
+
+  it("refuses a route that does not match the game's kind", async () => {
+    const cookie = await signIn("c4-kind@example.com");
+
+    // A score for a versus game would be meaningless...
+    const scored = await request("/api/games/connect4/scores", {
+      method: "POST",
+      body: { score: 10, level: 1 },
+      cookie,
+    });
+    assert.equal(scored.status, 400);
+    assert.deepEqual(await scored.json(), { error: "wrong_game_kind" });
+
+    // ...and a win/loss for a score game likewise.
+    const matched = await request("/api/games/tetris/matches", {
+      method: "POST",
+      body: { outcome: "win" },
+      cookie,
+    });
+    assert.equal(matched.status, 400);
+    assert.deepEqual(await matched.json(), { error: "wrong_game_kind" });
+
+    const readScore = await request("/api/games/connect4/scores", { cookie });
+    assert.equal(readScore.status, 400);
+    const readMatch = await request("/api/games/tetris/matches", { cookie });
+    assert.equal(readMatch.status, 400);
+  });
+
+  it("rejects an unknown game", async () => {
+    const cookie = await signIn("c4-unknown@example.com");
+    const response = await request("/api/games/doom/matches", { cookie });
+    assert.equal(response.status, 404);
+    assert.deepEqual(await response.json(), { error: "unknown_game" });
+  });
+
+  it("puts the versus board on the hub", async () => {
+    const cookie = await signIn("c4-hub@example.com");
+    await request("/api/games/connect4/matches", {
+      method: "POST",
+      body: { outcome: "win", playerName: "HUBBER" },
+      cookie,
+    });
+
+    const response = await request("/api/games", { cookie });
+    const { games } = (await response.json()) as {
+      games: {
+        slug: string;
+        kind: string;
+        top: { playerName?: string; wins?: number } | null;
+        you: { wins?: number } | null;
+      }[];
+    };
+
+    const connect4 = games.find((game) => game.slug === "connect4");
+    assert.equal(connect4?.kind, "versus");
+    assert.ok((connect4?.top?.wins ?? 0) >= 1, "the hub should show the leading record");
+    assert.ok((connect4?.you?.wins ?? 0) >= 1);
   });
 });

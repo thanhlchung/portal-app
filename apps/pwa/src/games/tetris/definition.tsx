@@ -67,5 +67,5 @@ export const tetrisDefinition: ArcadeDefinition<HudState, GameResult> = {
     </div>
   ),
 
-  submission: (result) => ({ score: result.score, level: result.level }),
+  submission: (result) => ({ kind: "score", score: result.score, level: result.level }),
 };
