@@ -131,6 +131,20 @@ never demotes an earlier run. Scores are client-reported — validation bounds t
 points, level ≤ 100, 24-character name) but a determined player can still claim any number; see
 `docs/ARCHITECTURE.md` §6 for why that is accepted and what it would take to fix.
 
+### Sound
+
+Every game makes noise, but browsers only allow audio after a user gesture: the
+first tap on **Launch** is what unlocks it. Two things make a silent device
+distinguishable from a broken one — **muting and unmuting the ♪ button plays a
+short confirmation beep**, and every sound retries `AudioContext.resume()`, so a
+context the browser suspended (backgrounded tab, phone call, iOS interruption)
+does not leave the game mute for the rest of the session.
+
+If you hear nothing at all: on iOS the hardware **silent switch mutes Web Audio**
+and there is no in-page workaround; on Android check the *media* volume, not the
+notification volume; and in-app browsers (Instagram, X, Facebook) can block audio
+outright. The confirmation beep is the fastest test of which case you are in.
+
 ## Commands
 
 | Command | What it does |

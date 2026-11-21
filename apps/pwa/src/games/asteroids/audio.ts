@@ -59,6 +59,36 @@ export class GameAudio {
   setMuted(muted: boolean): void {
     this.muted = muted;
     if (this.master) this.master.gain.value = muted ? 0 : 0.5;
+    if (!muted) this.confirmation();
+  }
+
+  /** Audible proof that the device is playing sound at all. */
+  confirmation(): void {
+    const context = this.context;
+    const master = this.master;
+    if (!context || !master) return;
+    this.ensureRunning();
+    const t = context.currentTime;
+    const osc = context.createOscillator();
+    const gain = context.createGain();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(700, t);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.12, t + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+    osc.connect(gain);
+    gain.connect(master);
+    osc.start(t);
+    osc.stop(t + 0.14);
+  }
+
+  /**
+   * Browsers suspend the context when a tab is backgrounded or a phone call
+   * interrupts audio. Scheduling against a suspended context makes no sound, so
+   * every effect retries the resume first.
+   */
+  private ensureRunning(): void {
+    if (this.context && this.context.state !== "running") void this.context.resume();
   }
 
   get isMuted(): boolean {
@@ -67,6 +97,7 @@ export class GameAudio {
 
   shoot(): void {
     const context = this.context;
+    this.ensureRunning();
     const master = this.master;
     if (!context || !master) return;
     const t = context.currentTime;
@@ -85,6 +116,7 @@ export class GameAudio {
 
   explosion(big: boolean): void {
     const context = this.context;
+    this.ensureRunning();
     const master = this.master;
     const noise = this.noise;
     if (!context || !master || !noise) return;
@@ -111,6 +143,7 @@ export class GameAudio {
 
   thrustOn(): void {
     const context = this.context;
+    this.ensureRunning();
     const master = this.master;
     if (!context || !master || this.thrustOsc) return;
     const t = context.currentTime;
@@ -137,6 +170,7 @@ export class GameAudio {
 
   thrustOff(): void {
     const context = this.context;
+    this.ensureRunning();
     const osc = this.thrustOsc;
     const gain = this.thrustGain;
     if (!context || !osc || !gain) return;
@@ -160,6 +194,7 @@ export class GameAudio {
 
   saucerOn(): void {
     const context = this.context;
+    this.ensureRunning();
     const master = this.master;
     if (!context || !master || this.saucerOscA) return;
     const t = context.currentTime;
@@ -193,6 +228,7 @@ export class GameAudio {
 
   saucerOff(): void {
     const context = this.context;
+    this.ensureRunning();
     const oscA = this.saucerOscA;
     const oscB = this.saucerOscB;
     const gain = this.saucerGain;

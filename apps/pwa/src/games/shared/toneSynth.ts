@@ -41,6 +41,23 @@ export class ToneSynth {
 
   setMuted(muted: boolean): void {
     this.muted = muted;
+    if (!muted) {
+      // Audible confirmation on unmute. Without it there is no way for a player
+      // to tell "sound is on but my device is silent" from "sound is broken".
+      this.ensureRunning();
+      this.tone(660, 0.08, "square", 0.12);
+    }
+  }
+
+  /**
+   * A browser can suspend the context at any time — a backgrounded tab, a phone
+   * call, iOS interrupting audio — and a suspended context silently swallows
+   * whatever you schedule at it. Retrying the resume on every sound is cheap and
+   * means a game never stays mute for the rest of a session.
+   */
+  private ensureRunning(): void {
+    const context = this.context;
+    if (context && context.state !== "running") void context.resume();
   }
 
   /**
@@ -50,6 +67,7 @@ export class ToneSynth {
   tone(freq: number, duration: number, type: Waveform = "square", volume = 0.15, offset = 0): void {
     const context = this.context;
     if (this.muted || !context) return;
+    this.ensureRunning();
 
     const start = context.currentTime + offset;
     const osc = context.createOscillator();

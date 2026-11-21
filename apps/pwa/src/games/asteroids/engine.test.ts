@@ -9,6 +9,7 @@
  */
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
+import { installFakeAudio, lastAudioContext } from "../shared/fakeAudio";
 import { fakeCanvas, listenerCount, resetHarness, step } from "../shared/testHarness";
 import { AsteroidsGame } from "./engine";
 import type { GameEvents } from "./types";
@@ -283,6 +284,23 @@ describe("asteroids engine", () => {
     assert.deepEqual(heard, [true, false]);
 
     muted.destroy();
+  });
+
+  it("schedules its own audio, which is a different implementation to the rest", () => {
+    // Asteroids keeps a bespoke GameAudio (filtered noise, sustained loops)
+    // rather than the shared ToneSynth, so it needs its own proof that sound is
+    // actually scheduled.
+    installFakeAudio();
+    const shooting = makeGame();
+    shooting.start();
+    const context = lastAudioContext();
+
+    const before = context.oscillators.length;
+    shooting.setInput("fire", true);
+    step(3);
+
+    assert.ok(context.oscillators.length > before, "firing should schedule an oscillator");
+    shooting.destroy();
   });
 
   it("stops listening to the window once destroyed", () => {

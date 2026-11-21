@@ -17,6 +17,7 @@
  */
 
 import { isActivationTarget, isTypingTarget } from "../shared/keys";
+import { ToneSynth } from "../shared/toneSynth";
 import {
   CLEAR_TICKS,
   COLORS,
@@ -91,6 +92,9 @@ export class PacmanGame {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly events: GameEvents;
+  private readonly audio = new ToneSynth();
+  /** Alternates the two "waka" pitches, as the arcade did. */
+  private wakaHigh = false;
 
   private width = 0;
   private height = 0;
@@ -131,8 +135,6 @@ export class PacmanGame {
   private globalTick = 0;
   private readonly popups: Popup[] = [];
   private fruit = { active: false, timer: 0, value: 100, spawned: 0 };
-  /** The original is silent; mute is tracked so the shell's button stays truthful. */
-  private mutedFlag = false;
 
   private accumulator = 0;
   private raf = 0;
@@ -175,6 +177,7 @@ export class PacmanGame {
   }
 
   start(): void {
+    this.audio.unlock();
     this.score = 0;
     this.level = 1;
     this.lives = STARTING_LIVES;
@@ -209,21 +212,24 @@ export class PacmanGame {
    */
   setInput(name: string, down: boolean): void {
     if (!down) return;
+    // A d-pad press is a user gesture: a good moment to unlock audio.
+    this.audio.unlock();
     if (!(name in DIRS)) return;
     this.pac.nextDir = name as Direction;
   }
 
   get muted(): boolean {
-    return this.mutedFlag;
+    return this.audio.isMuted;
   }
 
   setMuted(muted: boolean): void {
-    this.mutedFlag = muted;
-    this.events.onMutedChange?.(muted);
+    this.audio.setMuted(muted);
+    this.events.onMutedChange?.(this.audio.isMuted);
   }
 
   toggleMute(): void {
-    this.setMuted(!this.muted);
+    this.audio.unlock();
+    this.setMuted(!this.audio.isMuted);
   }
 
   destroy(): void {
@@ -236,6 +242,7 @@ export class PacmanGame {
     window.removeEventListener("orientationchange", this.handleOrientationChange);
     document.removeEventListener("visibilitychange", this.handleVisibility);
     this.observer?.disconnect();
+    this.audio.destroy();
   }
 
   /* --------------------------------------------------------------- events */
@@ -252,6 +259,8 @@ export class PacmanGame {
 
   private finishRun(): void {
     if (this.phase === "over") return;
+    this.audio.tone(262, 0.3, "sawtooth", 0.1);
+    this.audio.tone(196, 0.5, "sawtooth", 0.1, 0.24);
     this.setPhase("over");
     this.events.onGameOver?.({ score: this.score, level: this.level });
   }
@@ -260,6 +269,7 @@ export class PacmanGame {
 
   private handleKeyDown = (event: KeyboardEvent): void => {
     if (isTypingTarget(event.target)) return;
+    this.audio.unlock();
 
     const dir = KEY_MAP[event.key];
     if (dir) {
@@ -414,6 +424,15 @@ export class PacmanGame {
     this.emitHud();
   }
 
+  /**
+   * The two-tone pellet chomp. Dots are eaten roughly every 8 ticks, which is
+   * about the cadence of the arcade's waka.
+   */
+  private waka(): void {
+    this.wakaHigh = !this.wakaHigh;
+    this.audio.tone(this.wakaHigh ? 420 : 300, 0.04, "square", 0.06);
+  }
+
   private addScore(points: number): void {
     this.score += points;
     this.emitHud();
@@ -557,7 +576,10 @@ export class PacmanGame {
 
     if (char === ".") {
       this.addScore(POINTS.dot);
+      this.waka();
     } else {
+      this.audio.tone(520, 0.06, "square", 0.1);
+      this.audio.tone(260, 0.2, "triangle", 0.1, 0.06);
       this.addScore(POINTS.pellet);
       this.frightTimer = Math.round(frightSeconds(this.level) * 60);
       this.ghostCombo = 0;
@@ -581,6 +603,9 @@ export class PacmanGame {
     if (this.dotsLeft === 0) {
       this.stage = "clear";
       this.stageTimer = CLEAR_TICKS;
+      [523, 659, 784].forEach((freq, index) => {
+        this.audio.tone(freq, 0.12, "square", 0.1, index * 0.09);
+      });
     }
   }
 
@@ -803,10 +828,18 @@ export class PacmanGame {
         ghost.fright = false;
         ghost.state = "eyes";
         this.freeze = FREEZE_TICKS;
+        // Rising arpeggio: the reward for a chase.
+        [440, 660, 880].forEach((freq, index) => {
+          this.audio.tone(freq, 0.07, "square", 0.12, index * 0.06);
+        });
       } else {
         this.stage = "dead";
         this.stageTimer = 0;
         this.pac.dead = 0;
+        // The classic descending death wail.
+        [440, 349, 262, 175].forEach((freq, index) => {
+          this.audio.tone(freq, 0.18, "sawtooth", 0.13, index * 0.16);
+        });
       }
       return;
     }
@@ -825,6 +858,8 @@ export class PacmanGame {
       this.fruit.active = false;
       this.addScore(this.fruit.value);
       this.popup(FRUIT_POS.x, FRUIT_POS.y, String(this.fruit.value));
+      this.audio.tone(880, 0.08, "square", 0.12);
+      this.audio.tone(1320, 0.1, "triangle", 0.09, 0.07);
     }
   }
 

@@ -7,6 +7,7 @@
  */
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
+import { installFakeAudio, lastAudioContext } from "../shared/fakeAudio";
 import { fakeCanvas, listenerCount, resetHarness, step } from "../shared/testHarness";
 import { DIRS, FRUIT_POS, PAC_START, T } from "./constants";
 import { PacmanGame } from "./engine";
@@ -260,6 +261,57 @@ describe("pac-man engine", () => {
     // Blinky starts outside the pen; the others leave on a timer.
     assert.equal(internals.ghosts[0]?.state, "normal");
     assert.equal(internals.ghosts[1]?.state, "home");
+  });
+
+  it("plays a sound when a pellet is eaten", () => {
+    // The port adds sound to a silent original, so prove it actually schedules
+    // audio rather than trusting the call sites.
+    installFakeAudio();
+    game.start();
+    const internals = internalsOf(game);
+    ticks(game, 131);
+    const context = lastAudioContext();
+
+    internals.tiles[23]![13] = ".";
+    placePac(game, 13, 23);
+    const before = context.oscillators.length;
+    internals.eatTile();
+
+    assert.ok(
+      context.oscillators.length > before,
+      "eating a pellet should schedule a tone",
+    );
+  });
+
+  it("plays a sound when a life is lost", () => {
+    installFakeAudio();
+    game.start();
+    const internals = internalsOf(game);
+    ticks(game, 131);
+    const context = lastAudioContext();
+
+    const ghost = internals.ghosts[0]!;
+    ghost.fright = false;
+    ghost.state = "normal";
+    ghost.x = internals.pac.x;
+    ghost.y = internals.pac.y;
+    const before = context.oscillators.length;
+    internals.checkCollisions();
+
+    assert.equal(internals.stage, "dead");
+    assert.ok(context.oscillators.length > before, "the death wail should play");
+  });
+
+  it("reports mute through the shell's callback", () => {
+    const heard: boolean[] = [];
+    const muted = makeGame({ onMutedChange: (value) => heard.push(value) });
+    muted.start();
+    muted.toggleMute();
+    assert.equal(muted.muted, true);
+    muted.toggleMute();
+    assert.equal(muted.muted, false);
+    assert.deepEqual(heard, [true, false]);
+    muted.destroy();
   });
 
   it("stops listening to the window once destroyed", () => {
