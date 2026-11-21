@@ -7,4 +7,14 @@ export type {
   VersusRecord,
   YourBest,
 } from "./routes/scores.js";
+export type {
+  InviteView,
+  ParticipantView,
+  PositionsPayload,
+  RecentPersonView,
+  ShareEventView,
+  ShareRole,
+  ShareStatus,
+  ShareSummary,
+} from "./routes/shares.js";
 export type { GameKind, GameSlug } from "./games.js";

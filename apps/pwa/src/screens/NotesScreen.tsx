@@ -138,6 +138,9 @@ export default function NotesScreen({
           <span className="brand-name">Portal</span>
         </div>
         <nav className="header-actions" aria-label="Sections">
+          <a className="link-button link-button--muted" {...linkProps("/share")}>
+            Share
+          </a>
           <a className="link-button link-button--muted" {...linkProps("/play")}>
             Games
           </a>

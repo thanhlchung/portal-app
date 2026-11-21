@@ -5,6 +5,7 @@ import { getAuth } from "./auth.js";
 import { lastDeliveryOutcome, mailDeliveryMode } from "./mail.js";
 import { notesRoutes } from "./routes/notes.js";
 import { gamesRoutes, legacyScoresRoutes } from "./routes/scores.js";
+import { peopleRoutes, sharesRoutes } from "./routes/shares.js";
 import type { AppEnv } from "./types.js";
 
 const allowedOrigins = (
@@ -87,7 +88,11 @@ export const app = new Hono<AppEnv>()
   .route("/api/games", gamesRoutes)
   // Pre-multi-game alias for the default game's board. Kept because a user on
   // a service-worker-cached older shell still calls it.
-  .route("/api/scores", legacyScoresRoutes);
+  .route("/api/scores", legacyScoresRoutes)
+  // Live Share: time-boxed, consent-first location sharing sessions.
+  .route("/api/shares", sharesRoutes)
+  // People from past shares, for the one-tap repeat flow.
+  .route("/api/people", peopleRoutes);
 
 /**
  * The contract the PWA compiles against. `hc<AppType>()` turns this into a

@@ -1,9 +1,11 @@
 import { relations } from "drizzle-orm";
 import {
   boolean,
+  doublePrecision,
   index,
   integer,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uuid,
@@ -196,12 +198,153 @@ export const gameMatch = pgTable(
   ],
 );
 
+/**
+ * A **Live Share**: one time-boxed, consent-first location sharing session.
+ *
+ * The auth layer already owns `session`, so this row is a `share` everywhere —
+ * database, API and UI. `expiresAt` is always set: a share cannot outlive its
+ * declared window, and expiry is enforced lazily on every read and write, so an
+ * unswept row can never serve coordinates (there is no scheduler on the free
+ * tier, and correctness must not depend on one).
+ */
+export const share = pgTable(
+  "share",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: text("ownerId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** `active` | `ended`. Expiry flips this lazily; reads use expiresAt too. */
+    status: text("status").notNull().default("active"),
+    /** null = "until I stop"; capped server-side so it always becomes a date. */
+    durationMinutes: integer("durationMinutes"),
+    expiresAt: timestamp("expiresAt", { withTimezone: true }).notNull(),
+    endedAt: timestamp("endedAt", { withTimezone: true }),
+    /** `manual` | `expired` | `owner_left` */
+    endReason: text("endReason"),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("share_owner_created_idx").on(table.ownerId, table.createdAt),
+    index("share_status_expires_idx").on(table.status, table.expiresAt),
+  ],
+);
+
+/**
+ * Membership **and** the only stored position.
+ *
+ * There is no location history table on purpose: a ping overwrites this row's
+ * coordinates, and every transition out of sharing/joined/active nulls them.
+ * That makes "no trail to leak" a schema property rather than a promise.
+ *
+ * `sharing` defaults to **false**: joining is not publishing. The client flips
+ * it on only after the browser grants the geolocation permission.
+ */
+export const shareParticipant = pgTable(
+  "share_participant",
+  {
+    shareId: uuid("shareId")
+      .notNull()
+      .references(() => share.id, { onDelete: "cascade" }),
+    userId: text("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** `owner` | `guest` */
+    role: text("role").notNull(),
+    /** `joined` | `left` | `removed` */
+    state: text("state").notNull().default("joined"),
+    sharing: boolean("sharing").notNull().default(false),
+    lastLat: doublePrecision("lastLat"),
+    lastLng: doublePrecision("lastLng"),
+    /** Metres, as reported by the device. */
+    lastAccuracy: doublePrecision("lastAccuracy"),
+    /** Server clock. A client timestamp is ignored so freshness cannot be forged. */
+    lastAt: timestamp("lastAt", { withTimezone: true }),
+    joinedAt: timestamp("joinedAt", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.shareId, table.userId] }),
+    // "Who have I shared with recently", for the recent-people picker.
+    index("share_participant_user_joined_idx").on(table.userId, table.joinedAt),
+  ],
+);
+
+/**
+ * One-time join links.
+ *
+ * Only the SHA-256 hash of the token is stored: the raw token exists in the
+ * owner's create response and in the URL, nowhere else. A link is consumed by
+ * the first accepted join, and expires at the earlier of 24 hours and the
+ * share's own expiry.
+ */
+export const shareInvite = pgTable(
+  "share_invite",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    shareId: uuid("shareId")
+      .notNull()
+      .references(() => share.id, { onDelete: "cascade" }),
+    createdBy: text("createdBy")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    tokenHash: text("tokenHash").notNull().unique(),
+    expiresAt: timestamp("expiresAt", { withTimezone: true }).notNull(),
+    /** Set by the first accepted join; later attempts from another account fail. */
+    acceptedBy: text("acceptedBy").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    acceptedAt: timestamp("acceptedAt", { withTimezone: true }),
+    revokedAt: timestamp("revokedAt", { withTimezone: true }),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("share_invite_share_idx").on(table.shareId)],
+);
+
+/**
+ * Membership events — names, timestamps and kinds, never coordinates.
+ *
+ * This is what lets the owner answer "did Ana leave or was she removed?"
+ * without keeping a location trail.
+ */
+export const shareEvent = pgTable(
+  "share_event",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    shareId: uuid("shareId")
+      .notNull()
+      .references(() => share.id, { onDelete: "cascade" }),
+    /** null for system expiry. */
+    actorId: text("actorId").references(() => user.id, { onDelete: "set null" }),
+    /** created | joined | left | removed | paused | resumed | ended | expired | invite_created */
+    kind: text("kind").notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("share_event_share_created_idx").on(table.shareId, table.createdAt)],
+);
+
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
   notes: many(note),
   scores: many(score),
   matches: many(gameMatch),
+  sharesHosted: many(share),
+  memberships: many(shareParticipant),
+  shareEvents: many(shareEvent),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -224,6 +367,27 @@ export const gameMatchRelations = relations(gameMatch, ({ one }) => ({
   user: one(user, { fields: [gameMatch.userId], references: [user.id] }),
 }));
 
+export const shareRelations = relations(share, ({ one, many }) => ({
+  owner: one(user, { fields: [share.ownerId], references: [user.id] }),
+  participants: many(shareParticipant),
+  invites: many(shareInvite),
+  events: many(shareEvent),
+}));
+
+export const shareParticipantRelations = relations(shareParticipant, ({ one }) => ({
+  share: one(share, { fields: [shareParticipant.shareId], references: [share.id] }),
+  user: one(user, { fields: [shareParticipant.userId], references: [user.id] }),
+}));
+
+export const shareInviteRelations = relations(shareInvite, ({ one }) => ({
+  share: one(share, { fields: [shareInvite.shareId], references: [share.id] }),
+}));
+
+export const shareEventRelations = relations(shareEvent, ({ one }) => ({
+  share: one(share, { fields: [shareEvent.shareId], references: [share.id] }),
+  actor: one(user, { fields: [shareEvent.actorId], references: [user.id] }),
+}));
+
 export const schema = {
   user,
   session,
@@ -232,10 +396,18 @@ export const schema = {
   note,
   score,
   gameMatch,
+  share,
+  shareParticipant,
+  shareInvite,
+  shareEvent,
   userRelations,
   sessionRelations,
   accountRelations,
   noteRelations,
   scoreRelations,
   gameMatchRelations,
+  shareRelations,
+  shareParticipantRelations,
+  shareInviteRelations,
+  shareEventRelations,
 };

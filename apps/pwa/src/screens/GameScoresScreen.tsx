@@ -66,6 +66,9 @@ export default function GameScoresScreen({ game }: { game: GameMeta }) {
           <a className="link-button link-button--muted" {...linkProps("/play")}>
             Games
           </a>
+          <a className="link-button link-button--muted" {...linkProps("/share")}>
+            Share
+          </a>
           <button
             className="link-button link-button--muted"
             type="button"

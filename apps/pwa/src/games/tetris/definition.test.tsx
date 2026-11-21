@@ -15,7 +15,7 @@ import { tetrisDefinition } from "./definition";
 
 interface EngineInternals {
   input: Record<string, boolean>;
-  current: { rot: number } | null;
+  current: { rot: number; type: string } | null;
 }
 
 const SHELL_CALLS = [
@@ -70,15 +70,20 @@ describe("tetris definition", () => {
     engine.start();
     step(1);
     const internals = engine as unknown as EngineInternals;
-    const first = internals.current!.rot;
+    const start = internals.current!;
+    // The first piece is randomized, and rotating an O-piece is a deliberate
+    // no-op — that is what made this test flap. Assert tap semantics for
+    // whichever piece spawned instead of assuming it can rotate.
+    const rotates = start.type !== "O";
+    const expected = rotates ? (start.rot + 1) % 4 : start.rot;
 
     engine.setInput("rotate", true);
     step(1);
-    assert.equal(internals.current!.rot, (first + 1) % 4, "one press rotates once");
+    assert.equal(internals.current!.rot, expected, "one press rotates once");
 
     // Holding the button must not keep rotating.
     step(5);
-    assert.equal(internals.current!.rot, (first + 1) % 4, "a held rotate must not spin");
+    assert.equal(internals.current!.rot, expected, "a held rotate must not spin");
     engine.setInput("rotate", false);
   });
 

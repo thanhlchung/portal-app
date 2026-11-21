@@ -13,7 +13,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
-    "test": "tsx --test src/app.test.ts",
+    "test": "tsx --test src/app.test.ts src/shares.test.ts",
     "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {

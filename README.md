@@ -62,6 +62,18 @@ grow:
 | `/play/<slug>` | That game: `asteroids`, `space-invaders`, `tetris`, `connect4` |
 | `/play/<slug>/scores` | That game's board — top 20 runs, or match records for a versus game |
 | `/scores` | Legacy alias → the default game's board (bookmarks, cached shells) |
+| `/share` | **Live Share** hub — active shares, recently ended ones, display name |
+| `/share/new` | Start a share: duration, people, consent, then location permission |
+| `/share/<id>` | One share: list or map, pause/end/leave, invite links |
+| `/join/<token>` | Single-use invite link — works signed out (sign in, then join) |
+
+**Live Share** is a time-boxed, consent-first location-sharing session: pick a duration, send a
+single-use link, and everyone in the share sees everyone else until it stops or expires. It is
+foreground-only by design — a browser cannot track in the background — so the UI is honest about
+freshness ("last seen 4 minutes ago") instead of pretending. No history is stored, and paused or
+ended shares have their coordinates cleared. Requirements and the API contract are in
+[docs/LIVE-SHARE-REQUIREMENTS.md](docs/LIVE-SHARE-REQUIREMENTS.md); tests are in
+`apps/api/src/shares.test.ts`.
 
 Each game is its own lazy chunk (`React.lazy` via the registry), so opening one never downloads
 another's engine: the initial shell is ~101 KB gzipped and the Asteroids chunk is ~8 KB on top.

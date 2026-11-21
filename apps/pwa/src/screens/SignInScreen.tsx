@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CodeInput } from "../components/CodeInput";
 import { authClient, displayNameFromEmail } from "../lib/auth-client";
+import { currentPath } from "../lib/router";
 
 const RESEND_SECONDS = 60;
 
@@ -236,6 +237,12 @@ export default function SignInScreen() {
       </header>
 
       <main className="screen screen--center">
+        {currentPath().startsWith("/join/") ? (
+          <p className="invite-banner" role="status">
+            You&apos;ve been invited to a Live Share. Sign in to see who and join.
+          </p>
+        ) : null}
+
         {step === "email" ? (
           <form className="auth" onSubmit={onSubmitEmail} noValidate>
             <h1 className="auth-title">Sign in</h1>

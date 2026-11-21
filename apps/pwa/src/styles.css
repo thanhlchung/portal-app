@@ -1512,3 +1512,502 @@ body {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* ============================================================
+   Live Share
+   list-first rows, one-tap controls, and a map that is an
+   enhancement rather than the only representation.
+   ============================================================ */
+
+.share-lead {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.share-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.share-section-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.share-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.share-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  text-decoration: none;
+  color: var(--text);
+  box-shadow: var(--shadow-card);
+  transition: transform 0.05s ease;
+}
+
+.share-card:active {
+  transform: scale(0.985);
+}
+
+.share-state {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 8px;
+  border-radius: var(--radius-pill);
+  flex: none;
+}
+
+.share-state--live {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+
+.share-state--ended {
+  background: var(--bg-sunken);
+  color: var(--text-muted);
+}
+
+.share-card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.share-card-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.share-card-meta {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.share-card-chevron {
+  color: var(--text-subtle);
+  font-size: 20px;
+}
+
+.share-tile,
+.share-consent,
+.share-confirm {
+  padding: 16px;
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.share-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.share-option,
+.share-chip {
+  font: inherit;
+  font-size: 14px;
+  padding: 10px 14px;
+  min-height: 44px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.share-option.is-selected,
+.share-chip.is-selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.share-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.share-explainer-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.share-explainer-list li::marker {
+  color: var(--accent);
+}
+
+.share-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.share-footnote {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-subtle);
+  line-height: 1.5;
+}
+
+.share-name-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.share-name-row {
+  display: flex;
+  gap: 8px;
+}
+
+.share-name-row .text-input {
+  flex: 1;
+}
+
+.share-callout {
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--border);
+}
+
+.share-callout--on {
+  background: color-mix(in srgb, var(--accent) 9%, var(--bg-elevated));
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+.share-callout--off {
+  background: var(--bg-sunken);
+}
+
+.share-callout-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.share-callout-sub {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.share-help {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+}
+
+.share-view-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg-sunken);
+  border-radius: var(--radius-pill);
+  align-self: flex-start;
+}
+
+.share-tab {
+  font: inherit;
+  font-size: 14px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  min-height: 36px;
+}
+
+.share-tab.is-selected {
+  background: var(--bg-elevated);
+  color: var(--text);
+  box-shadow: var(--shadow-card);
+}
+
+.share-map,
+.share-map-placeholder {
+  width: 100%;
+  height: 320px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--bg-sunken);
+}
+
+.share-map-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.share-map {
+  font: inherit;
+}
+
+.share-pin {
+  background: none;
+  border: none;
+}
+
+.share-pin-dot {
+  position: absolute;
+  left: -7px;
+  top: -7px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent),
+    0 1px 3px rgb(0 0 0 / 0.35);
+}
+
+.share-pin--recent .share-pin-dot {
+  opacity: 0.75;
+}
+
+.share-pin--stale .share-pin-dot {
+  background: var(--text-subtle);
+  box-shadow: none;
+  opacity: 0.7;
+}
+
+.share-pin.is-you .share-pin-dot {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.share-pin-label {
+  position: absolute;
+  left: 0;
+  top: 10px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--border);
+}
+
+.share-accuracy {
+  stroke: var(--accent);
+  fill: var(--accent);
+  fill-opacity: 0.08;
+  stroke-opacity: 0.5;
+  stroke-width: 1;
+}
+
+.share-people {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.share-person {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.share-person:last-child {
+  border-bottom: none;
+}
+
+.share-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 650;
+  font-size: 15px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  flex: none;
+}
+
+.share-person--stale .share-avatar {
+  background: var(--bg-sunken);
+  color: var(--text-muted);
+}
+
+.share-person-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.share-person-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.share-person--stale .share-person-name {
+  color: var(--text-muted);
+}
+
+.share-person-meta {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.share-invites {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.share-invite {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.share-invite-label {
+  font-size: 12px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.share-invite-url {
+  font-size: 12px;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.share-invite-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.share-actions--footer {
+  margin-top: 4px;
+}
+
+.share-ended-line {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.share-events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.share-events li {
+  display: flex;
+  gap: 10px;
+}
+
+.share-event-time {
+  color: var(--text-subtle);
+  font-variant-numeric: tabular-nums;
+  min-width: 48px;
+}
+
+.share-inviter {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.invite-banner {
+  margin: 0 0 4px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 9%, var(--bg-elevated));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.button--danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #ffffff;
+}
+
+.link-button.is-active {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.field-note--error {
+  color: var(--danger);
+}

@@ -2,10 +2,14 @@ import { Suspense } from "react";
 import { DEFAULT_GAME, findGame, type GameMeta } from "./games/registry";
 import { authClient } from "./lib/auth-client";
 import { matchPath, usePath } from "./lib/router";
+import ActiveShareScreen from "./screens/ActiveShareScreen";
 import GameScoresScreen from "./screens/GameScoresScreen";
 import GamesLauncher, { RedirectTo } from "./screens/GamesLauncher";
+import JoinShareScreen from "./screens/JoinShareScreen";
+import NewShareScreen from "./screens/NewShareScreen";
 import NotesScreen from "./screens/NotesScreen";
 import NotFoundScreen from "./screens/NotFoundScreen";
+import ShareHubScreen from "./screens/ShareHubScreen";
 import SignInScreen from "./screens/SignInScreen";
 
 /**
@@ -14,6 +18,10 @@ import SignInScreen from "./screens/SignInScreen";
  * unauthenticated, matching how the API's own middleware works.
  *
  *   /                       notes
+ *   /share                  live shares hub
+ *   /share/new              start a share
+ *   /share/<id>             one share (active or ended)
+ *   /join/<token>           single-use invite link
  *   /play                   games hub
  *   /play/<slug>            that game
  *   /play/<slug>/scores     that game's board
@@ -44,6 +52,17 @@ export default function App() {
   }
 
   if (!session) return <SignInScreen />;
+
+  // The invite link must be readable before and after sign-in: while signed
+  // out, the sign-in screen renders and this path is preserved.
+  const joinMatch = matchPath("/join/:token", path);
+  if (joinMatch?.token) return <JoinShareScreen token={joinMatch.token} />;
+
+  // `/share/new` is checked before `/share/:id`, which would otherwise match it.
+  if (path === "/share") return <ShareHubScreen user={session.user} />;
+  if (path === "/share/new") return <NewShareScreen />;
+  const shareMatch = matchPath("/share/:id", path);
+  if (shareMatch?.id) return <ActiveShareScreen shareId={shareMatch.id} />;
 
   // Checked before /play/:slug: both match `/play/x/scores`, but only this one
   // is the correct reading of it.

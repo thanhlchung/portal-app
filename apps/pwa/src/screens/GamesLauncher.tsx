@@ -35,6 +35,9 @@ export default function GamesLauncher() {
           <a className="link-button link-button--muted" {...linkProps("/")}>
             Notes
           </a>
+          <a className="link-button link-button--muted" {...linkProps("/share")}>
+            Share
+          </a>
         </div>
       </header>
 
