@@ -59,7 +59,7 @@ grow:
 | --- | --- |
 | `/` | Notes (the portal's original screen) |
 | `/play` | Games hub — one card per game, with your best and the top score |
-| `/play/<slug>` | That game: `asteroids`, `space-invaders`, `tetris`, `connect4` |
+| `/play/<slug>` | That game: `asteroids`, `space-invaders`, `tetris`, `connect4`, `pacman` |
 | `/play/<slug>/scores` | That game's board — top 20 runs, or match records for a versus game |
 | `/scores` | Legacy alias → the default game's board (bookmarks, cached shells) |
 | `/share` | **Live Share** hub — active shares, recently ended ones, display name |

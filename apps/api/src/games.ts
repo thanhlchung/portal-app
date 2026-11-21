@@ -24,6 +24,7 @@ export const GAMES = {
   "space-invaders": "score",
   tetris: "score",
   connect4: "versus",
+  pacman: "score",
 } as const;
 
 export type GameKind = (typeof GAMES)[GameSlug];

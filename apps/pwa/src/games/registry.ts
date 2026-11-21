@@ -75,6 +75,14 @@ export const games: readonly GameMeta[] = [
     controls: "Tap a column",
     Component: lazy(() => import("./connect4/Game")),
   },
+  {
+    slug: "pacman",
+    kind: "score",
+    title: "Pac-Man",
+    blurb: "Clear the maze, dodge four ghosts — and hunt them when a power pellet turns them blue.",
+    controls: "Arrow keys or the d-pad",
+    Component: lazy(() => import("./pacman/Game")),
+  },
 ];
 
 export function findGame(slug: string | undefined): GameMeta | undefined {

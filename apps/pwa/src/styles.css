@@ -1485,6 +1485,49 @@ body {
   transition: transform 0.05s ease, background 0.1s ease, border-color 0.1s ease;
 }
 
+/* Pac-Man: a 3x2 d-pad, the shape the original used on touch screens. */
+.pac-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 68px);
+  grid-template-rows: repeat(2, 56px);
+  gap: 8px;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.pac-pad .pad-button {
+  pointer-events: auto;
+}
+
+.pac-up {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.pac-left {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.pac-down {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.pac-right {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+/* A Pac-Man shaped life counter. */
+.pac-life {
+  width: 15px;
+  height: 15px;
+  background: var(--pac-life, #ffdd00);
+  border-radius: 50%;
+  clip-path: polygon(100% 22%, 46% 50%, 100% 78%, 100% 100%, 0 100%, 0 0);
+}
+
 .pad-button--small {
   font-size: 13px;
   letter-spacing: 0.08em;
